@@ -1,0 +1,38 @@
+Amendment 3: deleted uncited statistic from section d3s8 ("85% of CI integrations")
+Superseded 9 exam-prep-app questions:
+  cca-f-q-d4-017 ← superseded by avidevelops Q1
+  cca-f-q-d1-018 ← superseded by avidevelops Q18
+  cca-f-q-d2-007 ← superseded by avidevelops Q19
+  cca-f-q-d1-015 ← superseded by avidevelops Q22
+  cca-f-q-d1-016 ← superseded by avidevelops Q23
+  cca-f-q-d1-010 ← superseded by avidevelops Q24
+  cca-f-q-d5-009 ← superseded by avidevelops Q25
+  cca-f-q-d5-006 ← superseded by avidevelops Q30
+  cca-f-q-d2-010 ← superseded by avidevelops Q33
+contrib disagreement Q3: contrib says D, README (corrected) says A — using README's weaker-bullets for per-option rationale
+domain note Q3: contrib says D5, Rapids assigns d4 (official-guide domain semantics; see MIGRATION_NOTES)
+domain note Q4: contrib says D4, Rapids assigns d5 (official-guide domain semantics; see MIGRATION_NOTES)
+domain note Q6: contrib says D1, Rapids assigns d4 (official-guide domain semantics; see MIGRATION_NOTES)
+domain note Q18: contrib says D1, Rapids assigns d3 (official-guide domain semantics; see MIGRATION_NOTES)
+domain note Q19: contrib says D1, Rapids assigns d2 (official-guide domain semantics; see MIGRATION_NOTES)
+domain note Q20: contrib says D1, Rapids assigns d3 (official-guide domain semantics; see MIGRATION_NOTES)
+domain note Q21: contrib says D5, Rapids assigns d1 (official-guide domain semantics; see MIGRATION_NOTES)
+domain note Q23: contrib says D4, Rapids assigns d1 (official-guide domain semantics; see MIGRATION_NOTES)
+domain note Q24: contrib says D2, Rapids assigns d1 (official-guide domain semantics; see MIGRATION_NOTES)
+domain note Q28: contrib says D1, Rapids assigns d5 (official-guide domain semantics; see MIGRATION_NOTES)
+Q29 has no answer options in source — migrated as scenario card only (cca-f-scen-d5-003), not as MC
+domain note Q30: contrib says D4, Rapids assigns d5 (official-guide domain semantics; see MIGRATION_NOTES)
+domain note Q31: contrib says D2, Rapids assigns d5 (official-guide domain semantics; see MIGRATION_NOTES)
+domain note Q33: contrib says D2, Rapids assigns d4 (official-guide domain semantics; see MIGRATION_NOTES)
+avidevelops questions migrated as MC: 32 (Q29 excluded, card-only)
+wrote content\exams\cca-f\sections.ts (49 items)
+wrote content\exams\cca-f\cards.ts (119 items)
+wrote content\exams\cca-f\questions.ts (119 items)
+wrote content\exams\snowpro-c03\sections.ts (8 items)
+wrote content\exams\snowpro-c03\cards.ts (69 items)
+wrote content\exams\snowpro-c03\questions.ts (133 items)
+official-hashes.json written (12 official questions frozen)
+
+=== COMPOSITION ===
+cca-f: sections=49 cards=119 {"recall":83,"scenario":23,"trap":13} questions=119 {"d1":18,"d2":29,"d5":25,"d3":22,"d4":22,"proj":3} official=12
+snowpro-c03: sections=8 cards=69 {"recall":52,"trap":17} questions=133 {"d1":35,"d2":25,"d3":26,"d4":29,"d5":18}

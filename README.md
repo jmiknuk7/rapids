@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Rapids
 
-## Getting Started
+**Certification prep, engineered.** A multi-exam study platform built on
+FSRS scheduling, successive relearning, confidence calibration, and
+blueprint-weighted interleaving — every mechanic cited on the in-app
+Method page. Built by Jacob Miknuk / 7Rivers.
 
-First, run the development server:
+> Independent study tool. Not affiliated with, endorsed by, or sponsored by
+> Snowflake Inc. or Anthropic PBC. Not an official 7Rivers product. Exam
+> content compiled from publicly available official exam guides and vendor
+> documentation.
+
+**Status: Phase 1** — content schema, registry, and both exam corpora
+migrated and validated. No study UI yet (a raw content dump ships for the
+fidelity review gate). Build phases and their gates: `docs/AMENDMENTS.md`,
+`docs/PHASE0_INVENTORY.md`, `MIGRATION_NOTES.md`.
+
+## Exams
+
+| Exam | Content |
+| --- | --- |
+| Claude Certified Architect – Foundations (CCA-F) | 49 sections · 119 cards · 119 questions (12 verbatim-official) |
+| SnowPro Core (COF-C03) | 8 sections · 69 cards · 133 questions |
+
+Exams are **data, not code** — see `content/README.md` for how to add one
+(one folder + one registry line, validated at build).
+
+## Development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+pnpm validate:content   # Zod + cross-field validation, fails the Vercel build
+pnpm test               # content parity + integrity tests (vitest)
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Content attribution: CCA-F question content includes material from
+[avidevelops/claude-architect-exam-prep](https://github.com/avidevelops/claude-architect-exam-prep)
+(CC BY 4.0, changes made). Full source registry per exam in
+`content/exams/*/sources.ts`.

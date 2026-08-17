@@ -1,0 +1,53 @@
+{
+  "_about": "SHA-256 of each official (verbatim exam-guide) CCA-F question text, generated from the source repo at migration time. The test recomputes from content and must match byte-for-byte.",
+  "hashes": [
+    {
+      "id": "cca-f-q-d1-001",
+      "sha256": "300a4ffa70cde05312774422f271c28ea3dd5d0d0031c946b11151028ab9d4c4"
+    },
+    {
+      "id": "cca-f-q-d2-001",
+      "sha256": "14fc958ef5e10179ff41408fb5d664cb94a3882b254f16ea4922e8713ff68168"
+    },
+    {
+      "id": "cca-f-q-d5-001",
+      "sha256": "54a65247ade4b85c96c1a48107a9bdfafac701d138f6becf4772a7bbeb6a5ddc"
+    },
+    {
+      "id": "cca-f-q-d3-001",
+      "sha256": "b0511f41d370fa33c358ad70df9f791b62327f4b0ab58968e805e5a9cd9d97a5"
+    },
+    {
+      "id": "cca-f-q-d3-002",
+      "sha256": "00b79cc53f71f1392bb3e4b3a82f77f1ef3684f9b90111b6c44543c373652059"
+    },
+    {
+      "id": "cca-f-q-d3-003",
+      "sha256": "48a0ae4348b2217d60e5de6e984847bcc78515fc7816de8b9f9585c5902280e5"
+    },
+    {
+      "id": "cca-f-q-d1-002",
+      "sha256": "a1f3b797029e15945ec018a18a780f8a9f71cc8ad1441523dce1d59f2764a950"
+    },
+    {
+      "id": "cca-f-q-d5-002",
+      "sha256": "6fce630a53d8cdd214038ea8f9743a62fd3094cce154b591c6d384c1899baa03"
+    },
+    {
+      "id": "cca-f-q-d2-002",
+      "sha256": "8737619647600b44af66fa874939c249db1b2ee2858e5f676dd87e5b38d05fb8"
+    },
+    {
+      "id": "cca-f-q-d3-004",
+      "sha256": "1ec60d6255df4e2cea3e12fe99968389dab919e544825cdb3689dd9b328cb96c"
+    },
+    {
+      "id": "cca-f-q-d4-001",
+      "sha256": "46af1c86d071368bf682feb5359243e19055c04c2b8b1d3834ba4c6d1712c105"
+    },
+    {
+      "id": "cca-f-q-d4-002",
+      "sha256": "68c9227d7c275e2c4b504fba287ce769c6c3ccdaeabf01fccd35576189401542"
+    }
+  ]
+}
