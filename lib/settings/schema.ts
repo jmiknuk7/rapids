@@ -15,6 +15,16 @@ export const ExamSettingsSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .nullable()
     .default(null),
+  /**
+   * ISO date the exam date was (last) set. Anchors the A1 consolidation
+   * window: consolidation begins at 80% of [examDateSetAt, examDate].
+   * Stamped by the settings layer whenever examDate changes.
+   */
+  examDateSetAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .default(null),
 });
 
 export const SettingsSchema = z.object({

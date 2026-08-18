@@ -74,3 +74,45 @@ file. Revised parity counts (asserted by test):
 `lib/settings/schema.ts` defines per-exam `examDate` (nullable, default
 null). Dashboard prompts for a date rather than silently scheduling on an
 infinite horizon.
+
+---
+
+# Phase-1 sign-off additions (Jake, 2026-08-18)
+
+## A7 — Coverage ratio enters the readiness formula (Phase 2)
+
+CCA-F bank share is inversely correlated with exam weight (d1: 27% weight,
+15.5% bank share, ratio 0.57). Blueprint interleaving over a thin bank
+inflates readiness via recognition. Required:
+
+- `coverageRatio = bankShare / examWeight` per domain, derived in the
+  manifest layer (computed from registry, never hardcoded).
+- Track `exposureCount` per question; compute `medianExposure` per domain.
+- Familiarity penalty: when a domain's `medianExposure` > 3 AND its
+  `coverageRatio` < 0.75, discount that domain's readiness contribution and
+  label it explicitly in the breakdown — never silently.
+- Dashboard domain breakdown shows coverage ratio; any domain < 0.75 renders
+  a "thin bank" indicator with its question count.
+- `/gaps` companion view/filter: authoring priority ranked by
+  `examWeight × (1 − coverageRatio)` — for CCA-F, d1 tops it by a wide margin.
+- Do NOT suppress d1 in the interleaver. The blueprint weight is correct;
+  the bank is thin. Tell the truth, don't study d1 less.
+
+## A8 — Cross-reference near-duplicate stems (Phase 4)
+
+- Add `relatedQuestionIds` to the question schema.
+- Link the Q3 pair (cca-f-q-av-q03 "max cost efficiency" → 6h ↔ the retained
+  4h "reliably" question). Each explanation must name the discriminating
+  phrase and state why the other's answer differs. Render related questions
+  on reveal.
+- Scan both corpora for other near-duplicate stems with divergent answers
+  during Phase 4 and report findings. Well-cross-referenced near-duplicate
+  pairs train feature discrimination — higher value than either question
+  alone.
+
+## A9 — /method must state the self-explanation gap plainly (Phase 4)
+
+208 of 252 questions (83%) lack per-distractor rationale until the /gaps
+authoring work is done. The /method page describes self-explanation as
+partially available and points at the /gaps queue — it must not describe the
+mechanic as fully implemented while most of the corpus lacks it.
