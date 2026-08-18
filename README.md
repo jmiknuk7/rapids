@@ -30,9 +30,16 @@ Exams are **data, not code** — see `content/README.md` for how to add one
 ```bash
 pnpm install
 pnpm validate:content   # Zod + cross-field validation, fails the Vercel build
-pnpm test               # content parity + integrity tests (vitest)
+pnpm test               # content parity + integrity + engine tests (vitest)
+pnpm gate               # validate + tests + full build + lint, one command
 pnpm dev
 ```
+
+**Phase protocol:** `pnpm gate` green is the defined precondition for any
+phase-boundary commit. Local test success alone is not the gate — the full
+build (strict TypeScript, static generation) and lint are part of it. This
+became a rule after a Phase 2 commit went out with the build failing
+type-check while vitest was green.
 
 Content attribution: CCA-F question content includes material from
 [avidevelops/claude-architect-exam-prep](https://github.com/avidevelops/claude-architect-exam-prep)

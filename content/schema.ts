@@ -80,6 +80,14 @@ export const ManifestSchema = z.object({
    * estimate. Rendered wherever a mock score meets the passing line.
    */
   scoringNote: z.string().optional(),
+  /**
+   * Readiness uncap target (0..1). Deliberately set ABOVE the estimated
+   * pass fraction derived from the scaled threshold: neither vendor
+   * publishes a raw-to-scaled mapping, so a readiness score that uncaps
+   * precisely at the nominal threshold says "ready" at the moment it is
+   * most likely wrong. validateExam enforces target > estimated fraction.
+   */
+  readinessTargetFraction: z.number().gt(0).lt(1),
   domains: z.array(DomainSchema).min(1),
   registrationUrl: z.string().url(),
   officialGuideUrl: z.string().url(),
@@ -192,6 +200,15 @@ export function validateExam(exam: ExamContent): string[] {
     .reduce((a, d) => a + d.weight, 0);
   if (weightSum !== 100)
     problems.push(`domain weights sum to ${weightSum}, expected 100 (bonus domains excluded)`);
+
+  const [lo, hi] = exam.manifest.scoreScale;
+  const estimatedPassFraction = (exam.manifest.passingScore - lo) / (hi - lo);
+  if (exam.manifest.readinessTargetFraction <= estimatedPassFraction)
+    problems.push(
+      `readinessTargetFraction (${exam.manifest.readinessTargetFraction}) must exceed the ` +
+        `estimated pass fraction (${estimatedPassFraction}) — the target is a safety margin ` +
+        `above a threshold nobody can verify in raw terms`,
+    );
 
   const domainIds = new Set(exam.manifest.domains.map((d) => d.id));
   const sourceIds = new Set(exam.sources.map((s) => s.id));

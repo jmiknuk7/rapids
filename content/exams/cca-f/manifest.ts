@@ -19,7 +19,8 @@ export const manifest: ExamManifest = {
   passingScore: 720,
   scoreScale: [0, 1000],
   scoringNote:
-    "720/1000 is a scaled score. Rapids mocks show raw percentage with the pass line labeled estimated — the vendor's scaling is not public.",
+    "720/1000 is a scaled score. Rapids shows raw percentages with the threshold labeled: estimated — vendor uses scaled scoring; target set above the nominal threshold as a margin.",
+  readinessTargetFraction: 0.8,
   domains: [
     { id: "d1", name: "Agentic Architecture & Orchestration", short: "Agentic Arch", weight: 27, color: "#C2410C" },
     { id: "d2", name: "Tool Design & MCP Integration", short: "Tools & MCP", weight: 18, color: "#0F766E" },

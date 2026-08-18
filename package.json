@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "validate:content": "tsx scripts/validate-content.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "gate": "pnpm validate:content && vitest run && next build && eslint"
   },
   "dependencies": {
     "idb": "^8.0.3",

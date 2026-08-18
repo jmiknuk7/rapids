@@ -19,6 +19,9 @@ export const manifest: ExamManifest = {
   passingScore: 700,
   scoreScale: [0, 1000],
   scoringNote: "Scaled score — raw percentages in mocks are estimates.",
+  // Must exceed passingScore/scale as a fraction (validated): the readiness
+  // uncap target is a deliberate safety margin above the nominal threshold.
+  readinessTargetFraction: 0.8,
   domains: [
     // Non-bonus weights MUST sum to 100 (validated at build).
     { id: "d1", name: "Domain One", short: "One", weight: 60, color: "#14517D" },

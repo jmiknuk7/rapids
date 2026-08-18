@@ -23,7 +23,8 @@ export const manifest: ExamManifest = {
   passingScore: 750,
   scoreScale: [0, 1000],
   scoringNote:
-    "750/1000 is a scaled score. Rapids mocks show raw percentage with the pass line labeled estimated — the vendor's scaling is not public.",
+    "750/1000 is a scaled score (Snowflake states no official percent-correct threshold exists). Rapids shows raw percentages with the threshold labeled: estimated — vendor uses scaled scoring; target set above the nominal threshold as a margin.",
+  readinessTargetFraction: 0.8,
   domains: [
     { id: "d1", name: "Snowflake AI Data Cloud Features & Architecture", short: "Architecture", weight: 31, color: "#14517D" },
     { id: "d2", name: "Account Management & Data Governance", short: "Governance", weight: 20, color: "#1F6FA8" },

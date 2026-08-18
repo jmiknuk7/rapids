@@ -19,7 +19,7 @@ import {
   type ReadinessInput,
 } from "../lib/learning";
 import { mulberry32 } from "../lib/learning/rng";
-import { getExamById } from "../content/registry";
+import { EXAMS, getExamById } from "../content/registry";
 
 const NOW = Date.parse("2026-09-01T08:00:00Z");
 
@@ -226,14 +226,67 @@ describe("readiness (honest, floored, cappable)", () => {
     expect(r.overall).toBeLessThan(0.75); // 27% of the exam contributes nothing
   });
 
-  it("never shows ≥90% unless every domain individually clears the passing threshold", () => {
+  it("the uncap gate reads readinessTargetFraction, not the estimated pass fraction (correction 1)", () => {
     const input = baseInput();
-    // Make d5 fail the 72% passing fraction while everything else is high:
-    input.retrievability = (p) => (p.domainId === "d5" ? 0.6 : 1.0);
+    // d5 at 0.75: ABOVE the 0.72 estimated (scaled-derived) fraction but
+    // BELOW the 0.80 target margin. A gate on the estimated fraction would
+    // uncap here — exactly where "ready" is most likely wrong.
+    input.retrievability = (p) => (p.domainId === "d5" ? 0.75 : 1.0);
     const r = computeReadiness(input);
-    expect(r.domains.find((d) => d.domainId === "d5")!.score).toBeLessThan(0.72);
-    expect(r.cappedBelowPassing).toBe(true);
+    const d5 = r.domains.find((d) => d.domainId === "d5")!;
+    expect(d5.score).toBeGreaterThan(r.estimatedPassFraction);
+    expect(d5.score).toBeLessThan(r.readinessTarget);
+    expect(r.cappedBelowTarget).toBe(true);
     expect(r.displayPct).toBeLessThan(90);
+  });
+
+  it("readinessTargetFraction exceeds the estimated pass fraction for every exam in the registry", () => {
+    for (const exam of EXAMS) {
+      const [lo, hi] = exam.manifest.scoreScale;
+      const estimated = (exam.manifest.passingScore - lo) / (hi - lo);
+      expect(exam.manifest.readinessTargetFraction, exam.manifest.id).toBeGreaterThan(estimated);
+    }
+  });
+
+  it("overconfidence penalizes; underconfidence never inflates (correction 2, both directions)", () => {
+    const input = baseInput();
+    input.retrievability = () => 0.9; // all settled → coverage 1, strength 0.9
+    // d3 overconfident (+0.2), d4 underconfident (−0.2):
+    input.calibrationByDomain.d3 = { gap: 0.2, attempts: 50, statedMean: 0.9, accuracy: 0.7 };
+    input.calibrationByDomain.d4 = { gap: -0.2, attempts: 50, statedMean: 0.5, accuracy: 0.7 };
+    const r = computeReadiness(input);
+    const d3 = r.domains.find((d) => d.domainId === "d3")!;
+    const d4 = r.domains.find((d) => d.domainId === "d4")!;
+    expect(d3.score).toBeCloseTo(0.7, 5); // below coverage × strength
+    expect(d4.score).toBeCloseTo(0.9, 5); // exactly at it — never above
+    expect(d4.calibrationGap).toBe(0); // clamped
+  });
+
+  it("decomposes readiness into coverage and strength and recommends the right lever (correction 3)", () => {
+    const input = baseInput();
+    // d1: half graduated at full strength → coverage 0.5, strength ~1.0.
+    input.progress = input.progress.filter((p) => p.domainId !== "d1");
+    input.progress.push(
+      ...Array.from({ length: 5 }, (_, i) => settledCard(`d1-s${i}`, "d1")),
+      ...Array.from({ length: 5 }, (_, i) => {
+        const p = initialProgress(`d1-l${i}`, "cca-f", "d1", NOW);
+        return { ...advanceState(p, true, NOW), atRisk: i < 2 }; // 2 flagged atRisk
+      }),
+    );
+    // d2: all graduated but shaky.
+    input.retrievability = (p) => (p.domainId === "d2" ? 0.5 : 1.0);
+    const r = computeReadiness(input);
+    const d1 = r.domains.find((d) => d.domainId === "d1")!;
+    const d2 = r.domains.find((d) => d.domainId === "d2")!;
+    // Same composite, opposite diagnoses:
+    expect(d1.score).toBeCloseTo(d2.score, 2);
+    expect(d1.coverage).toBeCloseTo(0.5, 5);
+    expect(d1.strength).toBeCloseTo(1.0, 5);
+    expect(d1.recommendedAction).toBe("new-material");
+    expect(d1.atRiskCount).toBe(2);
+    expect(d2.coverage).toBeCloseTo(1.0, 5);
+    expect(d2.strength).toBeCloseTo(0.5, 5);
+    expect(d2.recommendedAction).toBe("review");
   });
 
   it("display percent is floored, never rounded up", () => {

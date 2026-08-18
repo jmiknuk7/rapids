@@ -161,8 +161,12 @@ degradation).
     scripts/migration/verify-glyphs.mjs — 23/23 scenario cards pass (exactly
     one leading ✅ block, all ❌ after it, none inside its span); 13/13 trap
     cards open with ❌ and keep ✅ after the refutation; one flag,
-    cca-f-trap-011, has no ✅ glyph at all (correct alternative is a plain
-    bullet list, faithful to source) — manually confirmed correct. All 13
+    cca-f-trap-011, originally had no ✅ glyph (its correct alternative was a
+    plain bullet list, faithful to source) — manually confirmed correct, and
+    on 2026-08-18 Jake authorized a pure glyph addition for uniformity
+    ("Correct distinctions:" → "✅ Correct distinctions:", no wording change),
+    applied at the transcription source and regenerated; the verifier now
+    passes 36/36 with zero flags. All 13
     trap fronts state the wrong approach; all 13 backs open with ❌ WRONG —
     confirmed by direct read, 2026-08-17.
 
@@ -183,8 +187,15 @@ degradation).
     across multiple independent third-party prep sources but all hedge —
     derived, not primary (Jake's ruling, 2026-08-17). `weightsVerified: false`,
     `weightsApproximate: true`; dashboard notice until Jake confirms against
-    the official study guide PDF and flips the flag (target: before Phase 2
-    completes).
+    the official study guide PDF and flips the flag.
+
+    **Verification attempt (Jake, 2026-08-18):** primary verification was
+    attempted against the public COF-C03 certification landing page. The page
+    publishes seven ability statements, not the five-domain blueprint, carries
+    no weights, does not link the study guide PDF directly, and its copy is
+    still pre-launch. The weights live in the downloadable Study Guide PDF,
+    reachable through the Snowflake Certification Portal or the FAQs link.
+    Flag stays false until confirmed against that PDF.
 13. **All 133 MC questions have `distractorRationale: false`** — explanations
     justify the correct answer only. This is the highest-volume entry in the
     `/exam/[slug]/gaps` authoring queue (Amendment 4). Some explanations
