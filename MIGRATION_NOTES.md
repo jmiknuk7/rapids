@@ -108,6 +108,64 @@ degradation).
    is ambiguous on a card that bundles three facts — so the existing 83 stay
    canonical and the merged variants were dropped as duplicates. The 23
    scenario + 13 trap cards are genuinely new types and migrated fully.
+
+    **Audit table (item 4 of the sign-off): every dropped card and the atomic
+    cards that carry its content.** Machine-readable version:
+    scripts/migration/dropped-flashcards-map.json, verified by
+    tests/dropped-flashcards-audit.test.ts (targets must exist AND their
+    fronts must contain the mapped concept — a wrong-but-existing ID fails).
+    IDs abbreviated: d1-001 = cca-f-recall-d1-001.
+
+    | Dropped | Front (abbrev.) | Decomposes into |
+    | --- | --- | --- |
+    | d1f1 | What are the 4 stop_reason values and what does each mean fo… | d1-001 |
+    | d1f2 | What is the ONLY reliable signal to terminate an agentic loo… | d1-002 |
+    | d1f3 | In hub-and-spoke multi-agent architecture, who handles ALL i… | d1-003 |
+    | d1f4 | Do subagents automatically inherit the coordinator's convers… | d1-004 |
+    | d1f5 | Can subagents spawn their own subagents? What tool spawns su… | d1-005, d1-006, d1-007 |
+    | d1f6 | Key AgentDefinition fields — which is the most critical for … | d1-008 |
+    | d1f7 | Hooks vs. prompts — what's the guarantee difference and when… | d1-010, d1-011, d1-012 |
+    | d1f8 | When to use --resume vs. a fresh session vs. fork_session? | d1-013, d1-014 |
+    | d1f9 | Prompt chaining vs. dynamic adaptive decomposition — what's … | d1-015, d1-016 |
+    | d1f10 | What must a structured handoff summary include when escalati… | d1-017, d5-005 |
+    | d2f1 | What are the 3 MCP primitives and what does each expose to t… | d2-001, d2-015 |
+    | d2f2 | 3 MCP transports — which is deprecated and what replaced it? | d2-002 |
+    | d2f3 | Project-level MCP config vs. user-level — file paths, who ge… | d2-003, d2-004 |
+    | d2f4 | What is the PRIMARY mechanism LLMs use for tool selection? W… | d2-005, d2-006 |
+    | d2f5 | 4 MCP error categories — which are retryable and why? | d2-008, d2-009, d5-010 |
+    | d2f6 | 3 tool_choice options — what does each guarantee and when to… | d2-010, d2-011, d2-012 |
+    | d2f7 | What is reasoning overload and how do you fix it? | d2-007 |
+    | d2f8 | Grep vs. Glob vs. Edit vs. Read/Write — which to use when? | d2-013, d2-014 |
+    | d3f1 | 3 levels of the CLAUDE.md hierarchy — which is version-contr… | d3-001, d3-002 |
+    | d3f2 | @import syntax in CLAUDE.md — syntax rules and nesting limit… | d3-003 |
+    | d3f3 | .claude/rules/ files — what are they and when to choose over… | d3-004, d3-005 |
+    | d3f4 | Slash commands: project vs. personal scoping, and how do the… | d3-006, d3-007 |
+    | d3f5 | SKILL.md frontmatter — what do context:fork, allowed-tools, … | d3-008 |
+    | d3f6 | Plan mode vs. direct execution — when to use each? | d3-009, d3-010 |
+    | d3f7 | What is the -p flag for Claude Code CI/CD pipelines and what… | d3-012, d3-013, d3-014 |
+    | d3f8 | /compact risk and /memory command purpose? | d3-016, d3-017 |
+    | d4f1 | Why do vague instructions fail for precision tasks? Give an … | d4-001 |
+    | d4f2 | Few-shot prompting: optimal count and most effective example… | d4-002 |
+    | d4f3 | What does tool_use with JSON Schema guarantee and what doesn… | d4-003, d4-004 |
+    | d4f4 | JSON schema: required vs nullable vs enum escape hatches — a… | d4-005, d4-006, d4-007 |
+    | d4f5 | Message Batches API: 5 critical facts for the CCA-F exam | d4-011, d4-012, d4-013, d4-014 |
+    | d4f6 | Validation-retry loops — when do retries help vs. when are t… | d4-008, d4-009, d4-010 |
+    | d5f1 | 3 core long-context management risks | d5-001, d5-002, d5-003 |
+    | d5f2 | Escalation triggers — IMMEDIATE vs. attempt resolution first… | d5-005, d5-006 |
+    | d5f3 | What must subagents return on failure to enable intelligent … | d5-009 |
+    | d5f4 | 5 mitigations for context degradation in long investigation … | d5-013, d5-004 |
+    | d5f5 | Why is '97% overall accuracy' dangerous and what's the corre… | d5-007, d5-008 |
+    | d5f6 | How to preserve source attribution through multi-agent synth… | d5-011, d5-012 |
+
+    **Glyph verification (item 1 of the sign-off):**
+    scripts/migration/verify-glyphs.mjs — 23/23 scenario cards pass (exactly
+    one leading ✅ block, all ❌ after it, none inside its span); 13/13 trap
+    cards open with ❌ and keep ✅ after the refutation; one flag,
+    cca-f-trap-011, has no ✅ glyph at all (correct alternative is a plain
+    bullet list, faithful to source) — manually confirmed correct. All 13
+    trap fronts state the wrong approach; all 13 backs open with ❌ WRONG —
+    confirmed by direct read, 2026-08-17.
+
 10. **Scenario cards intentionally coexist with their avidevelops MC
     siblings** (same teaching point, different retrieval mode: free recall of
     the fix vs recognition among options). The `tag` field ("GitHub Q21" etc.)
