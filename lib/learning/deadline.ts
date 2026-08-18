@@ -112,7 +112,7 @@ export function computeAtRisk(
 
   let demand = 0;
   for (const p of pending) demand += minDaysToDurable(p);
-  let capacity = Math.max(0, dailyReviewTarget * dte);
+  const capacity = Math.max(0, dailyReviewTarget * dte);
 
   // Timeline check against Criterion (per the amendment's wording).
   for (const p of pending) {

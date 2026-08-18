@@ -16,6 +16,7 @@ import {
   DAY_MS,
   type CardProgress,
   type Confidence,
+  type ReadinessInput,
 } from "../lib/learning";
 import { mulberry32 } from "../lib/learning/rng";
 import { getExamById } from "../content/registry";
@@ -198,7 +199,7 @@ describe("readiness (honest, floored, cappable)", () => {
     return p; // durable
   };
 
-  const baseInput = () => {
+  const baseInput = (): ReadinessInput => {
     const domains = ["d1", "d2", "d3", "d4", "d5"];
     const progress = domains.flatMap((d) =>
       Array.from({ length: 10 }, (_, i) => settledCard(`${d}-c${i}`, d)),

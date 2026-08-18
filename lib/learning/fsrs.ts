@@ -1,4 +1,4 @@
-import { fsrs, generatorParameters, Rating, type Card as FsrsCard } from "ts-fsrs";
+import { fsrs, generatorParameters, Rating, type Card as FsrsCard, type Grade } from "ts-fsrs";
 import type { ReviewGrade } from "./types";
 import { DAY_MS } from "./types";
 
@@ -12,7 +12,7 @@ import { DAY_MS } from "./types";
  * github.com/open-spaced-repetition/ts-fsrs.
  */
 
-const RATING: Record<ReviewGrade, Rating> = {
+const RATING: Record<ReviewGrade, Grade> = {
   again: Rating.Again,
   hard: Rating.Hard,
   good: Rating.Good,
