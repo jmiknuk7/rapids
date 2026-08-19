@@ -116,3 +116,64 @@ inflates readiness via recognition. Required:
 authoring work is done. The /method page describes self-explanation as
 partially available and points at the /gaps queue — it must not describe the
 mechanic as fully implemented while most of the corpus lacks it.
+
+---
+
+# Diátaxis amendment (Jake, 2026-08-18) — A10
+
+Apply Diátaxis (Procida, https://diataxis.fr — read start-here before
+writing) in three layers. The value is the separation discipline, not the
+four folders; mixing modes in one document degrades all of them.
+
+## A10 Layer 2 — study-content classification (with Phase 3)
+
+- **No restructuring.** Section parity (49 CCA-F / 8 SnowPro) is
+  test-asserted and outranks tidiness. Metadata only:
+  `diataxisMode: 'reference'|'explanation'|'how-to'|'tutorial'` +
+  optional `diataxisMixed: true` for sections that legitimately span modes.
+- Distribution is sanity-checked, not forced; an empty tutorial quadrant is
+  a finding, not a failure. Thin explanation relative to the exams'
+  reasoning emphasis is a content gap that feeds /gaps authoring priority.
+- **Report the distribution before committing the classification.**
+  STATUS: proposed classification in
+  `scripts/migration/diataxis-classification.PROPOSED.json`, reported
+  2026-08-18, awaiting Jake's check. Content files untouched until then.
+- Functional payoff: future card generation is mode-aware (reference →
+  recall cards; explanation → scenario/self-explanation cards; how-to →
+  ordered-step cards). DONE in Phase 3: queue items carry a derived mode
+  (recall→reference, scenario/trap→explanation, MC→exam-format), the mode
+  renders on the card, and buildQueue never serves 3 consecutive same-mode
+  items — /method must state this extension is reasoning by analogy from
+  Rohrer & Taylor 2007, not separately validated.
+
+## A10 Layers 1 + 3 — replaces Phase 5's documentation scope
+
+Phase 5 is now: 7Rivers branding, PWA, offline, Vercel deploy config, PLUS:
+
+- **Layer 1 (repo docs):** restructure into docs/{tutorials,how-to,
+  reference,explanation} + generated docs/index.md; README reduced to an
+  entry point routing to the quadrants; content/README.md split (how-to
+  links to reference, never restates it); AMENDMENTS stays a log but every
+  design-decision amendment gets its rationale extracted into an
+  explanation doc (A1 → why-deadline-aware-scheduling.md; correction 1 →
+  why-scaled-scores-are-not-raw-fractions.md); research citations stay in
+  code AND appear in explanation docs. Naming: kebab-case; your-first-x /
+  how-to-x / why-x; reference named for the thing.
+- **Layer 3 (in-app):** /method = explanation only; /method/reference for
+  the mechanical facts (state machine, readiness formula, FSRS params,
+  constants); first-run onboarding = a 5-card tutorial teaching
+  confidence-then-grade by doing (one path, no optionality, link to /method
+  for why); empty states & settings help = one-task how-tos. /method states
+  which mechanics are fully implemented (A9 carries over).
+- **Lint (ships with Layer 1):** scripts/lint-diataxis.mjs wired into
+  pnpm gate — reference: no second-person instructional openers; how-to: no
+  extended rationale (>~100 words → link to explanation); tutorial: no
+  optionality; explanation: no numbered procedural steps; frontmatter
+  quadrant must match folder; docs/index.md generated only. Heuristics may
+  false-positive: `diataxis-lint-ignore` with a required reason, every
+  suppression listed in output.
+
+Constraints: never rewrite exam content wording to satisfy structure or
+lint — content fidelity outranks documentation structure everywhere they
+conflict; no tutorial content invented to fill the quadrant; Diátaxis
+governs prose, not code or route structure.

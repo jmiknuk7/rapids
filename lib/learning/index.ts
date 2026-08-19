@@ -18,5 +18,6 @@ export * from "./deadline";
 export * from "./calibration";
 export * from "./coverage";
 export * from "./interleave";
+export * from "./queue";
 export * from "./readiness";
 export * from "./rng";

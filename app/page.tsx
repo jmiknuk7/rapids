@@ -23,9 +23,19 @@ export default function Home() {
           );
           return (
             <li key={exam.manifest.id} className="rounded border border-neutral-300 p-4">
-              <Link href={`/dump/${exam.manifest.slug}`} className="font-bold underline">
-                {exam.manifest.name}
-              </Link>
+              <div className="flex items-baseline gap-3">
+                <span className="font-bold">{exam.manifest.name}</span>
+                <Link
+                  href={`/exam/${exam.manifest.slug}/feed`}
+                  className="rounded px-2 py-0.5 font-bold text-white underline-offset-2"
+                  style={{ backgroundColor: exam.manifest.accent }}
+                >
+                  ▶ Feed
+                </Link>
+                <Link href={`/dump/${exam.manifest.slug}`} className="underline">
+                  raw dump
+                </Link>
+              </div>
               <div className="mt-1 text-neutral-600">
                 sections={exam.sections.length} · cards={exam.cards.length} (
                 {Object.entries(byType)

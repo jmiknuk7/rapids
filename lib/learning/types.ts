@@ -66,8 +66,15 @@ export interface ReviewEvent {
   /** Epoch ms of the review. */
   at: number;
   grade: ReviewGrade;
-  confidence: Confidence;
+  /**
+   * null on a skip-lapse: the user never stated a confidence, and logging
+   * one would fabricate calibration data. Calibration only consumes events
+   * with a real stated confidence.
+   */
+  confidence: Confidence | null;
   correct: boolean;
+  /** True when the lapse came from scrolling past without attempting. */
+  skipped?: boolean;
 }
 
 /** A review of an MC question (exposure + calibration tracking). */
