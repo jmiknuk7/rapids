@@ -126,8 +126,11 @@ export const ASSERT_SOURCE = String.raw`(() => {
         (el) => visible(el) && el.scrollHeight > el.clientHeight + 2,
       );
       if (clippedRegions.length && bar) {
-        const flip = item.querySelector("[data-qa$='-scroll']").closest("div[style*='perspective'], .relative");
-        const flipRect = (flip || item).getBoundingClientRect();
+        // Measure from the VISIBLE clipped region's flip container. (The
+        // first '-scroll' match may sit on a hidden face under reduced
+        // motion, whose zero rect fabricates 700px of "dead space".)
+        const flip = clippedRegions[0].closest("div[style*='perspective']") || clippedRegions[0];
+        const flipRect = flip.getBoundingClientRect();
         const barRect = bar.getBoundingClientRect();
         const dead = barRect.top - flipRect.bottom;
         if (dead > 100)
@@ -250,6 +253,38 @@ export const ASSERT_SOURCE = String.raw`(() => {
           what: "contrast below AA",
           selector: sel(el),
           values: "ratio=" + ratio.toFixed(2) + " needed=" + needed + " size=" + size,
+        });
+    }
+  }
+
+  /* 10 — copy audit (A11 review, D5): no build-status prose on shipped
+     routes. Prose defects are invisible to geometry assertions — this is
+     the class-catcher. Study-content subtrees are excluded (exam material
+     legitimately contains words like TODO/FIXME); dump routes are excluded
+     entirely (internal review scaffold that displays raw content). */
+  if (!location.pathname.startsWith("/dump")) {
+    const clone = document.body.cloneNode(true);
+    for (const el of clone.querySelectorAll('[data-qa="item"]')) el.remove();
+    const chrome = clone.innerText || clone.textContent || "";
+    const banned = [
+      /phase\s*[0-9]/i,
+      /no study ui/i,
+      /review build/i,
+      /content[- ]fidelity/i,
+      /\bTODO\b/,
+      /\bFIXME\b/,
+      /\bWIP\b/,
+      /coming soon/i,
+      /under construction/i,
+    ];
+    for (const re of banned) {
+      const m = chrome.match(re);
+      if (m)
+        failures.push({
+          check: 10,
+          what: "build-status copy in shipped route",
+          selector: location.pathname,
+          values: 'matched "' + m[0] + '"',
         });
     }
   }

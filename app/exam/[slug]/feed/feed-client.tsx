@@ -1,28 +1,18 @@
 "use client";
 
 /**
- * The Feed — Rapids' primary study surface. It RENDERS buildQueue() output;
- * queue composition lives in the engine (lib/learning/queue.ts), never here.
+ * The Feed — Rapids' primary study surface. It RENDERS engine state:
+ * queue composition lives in lib/learning/queue.ts and session behavior
+ * (shownAt stamping, 2s arming, skip-lapse, read-only-after-skip, duration
+ * metrics) lives in lib/learning/session.ts, where it is unit-tested. The
+ * component dispatches actions and applies side effects (FSRS updates,
+ * IndexedDB writes) when the session's record log grows — in event-handler
+ * context, never in render or synchronously in effects.
  *
- * Interaction contract (Phase 3 pre-brief):
- * - forced attempt before reveal (MC pick, or "I've recalled it" armed at 2s)
- * - confidence BEFORE reveal, grade after, both rows in the same bottom-third
- *   position so the thumb never travels
- * - skipping past an attempted-but-ungraded card records a lapse (confidence
- *   null — never fabricated)
- * - fixed-height slots for every queue position: scrollHeight never changes,
- *   so scroll-snap and virtualization cannot fight (render window ±2)
- * - median time-per-card instrumented and reported in the session summary
- *
- * Layout contract (A11, after the Phase 3 visual defects):
- * - HUD and action-bar heights are MEASURED into CSS variables (--hud-h,
- *   --bar-h); slots pad by measurement, never by fixed guesses — the
- *   no-exam-date banner changing the height budget is what broke Phase 3.
- * - Each card face is ONE scroll region (question + options together), so
- *   options can never collapse into a separate porthole.
- * - QA hooks: ?qaseed= seeds the queue RNG (or NEXT_PUBLIC_QA_SEED),
- *   ?qafirst=<id> pins an item to the queue front, data-qa attributes mark
- *   the geometry the assertion script measures.
+ * Layout contract (A11): chrome heights measured into --hud-h/--bar-h; one
+ * scroll region per card face with a fade mask when content extends past
+ * the fold; the 2s arming shows a fill so the wait is legible (the delay
+ * itself is the mechanism and is not shortened).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -42,6 +32,17 @@ import {
   type QueueItem,
   type ReviewGrade,
 } from "../../../../lib/learning";
+import {
+  createSession,
+  reduceSession,
+  isArmed,
+  medianMsPerCard,
+  sessionCounters,
+  REVEAL_ARM_MS,
+  type FeedSession,
+  type FeedAction,
+  type SlotUiState,
+} from "../../../../lib/learning/session";
 import { mulberry32 } from "../../../../lib/learning/rng";
 import { CARD_STATE_ORDER } from "../../../../lib/learning/types";
 import {
@@ -75,7 +76,6 @@ const TYPE_LABEL: Record<string, string> = {
 };
 const CONFIDENCES: Confidence[] = ["guess", "unsure", "confident", "certain"];
 const GRADES: ReviewGrade[] = ["again", "hard", "good", "easy"];
-const REVEAL_ARM_MS = 2000;
 const CHECKPOINT_EVERY = 12;
 
 type Slot =
@@ -83,67 +83,21 @@ type Slot =
   | { type: "checkpoint"; ordinal: number }
   | { type: "summary" };
 
-interface SlotState {
-  attempted?: { mcPick?: number; at: number };
-  confidence?: Confidence;
-  revealed?: boolean;
-  graded?: boolean;
-  correct?: boolean;
-  skipped?: boolean;
-  durationMs?: number;
-}
-
-interface SessionStats {
-  answered: number;
-  correct: number;
-  lapses: number;
-  skipped: number;
-  promotions: number;
-  streak: number;
-  times: number[];
-  attempts: { domainId: string | null; confidence: Confidence; correct: boolean }[];
-  byDomain: Record<string, { seen: number; correct: number }>;
-}
-
-const freshStats = (): SessionStats => ({
-  answered: 0,
-  correct: 0,
-  lapses: 0,
-  skipped: 0,
-  promotions: 0,
-  streak: 0,
-  times: [],
-  attempts: [],
-  byDomain: {},
-});
-
-const median = (xs: number[]): number | null => {
-  if (!xs.length) return null;
-  const s = [...xs].sort((a, b) => a - b);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-};
-
 export default function FeedClient({ slug }: { slug: string }) {
   const exam = getExamBySlug(slug)!;
   const accent = exam.manifest.accent;
   const cardsById = useMemo(() => new Map(exam.cards.map((c) => [c.id, c])), [exam]);
   const questionsById = useMemo(() => new Map(exam.questions.map((q) => [q.id, q])), [exam]);
-  const domainsById = useMemo(
-    () => new Map(exam.manifest.domains.map((d) => [d.id, d])),
-    [exam],
-  );
+  const domainsById = useMemo(() => new Map(exam.manifest.domains.map((d) => [d.id, d])), [exam]);
   const otherExams = EXAMS.filter((e) => e.manifest.slug !== slug);
 
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
-  const [slotStates, setSlotStates] = useState<Record<number, SlotState>>({});
-  const [activeIdx, setActiveIdx] = useState(0);
-  const [stats, setStats] = useState<SessionStats>(freshStats());
+  const [session, setSession] = useState<FeedSession>(() => createSession(0));
+  const [promotions, setPromotions] = useState(0);
   const [domainFilter, setDomainFilter] = useState<string | null>(null);
-  // Clock state, updated by an interval (never Date.now() during render):
-  // drives the 2-second reveal arming.
+  // Clock state updated by an interval — never Date.now() during render.
   const [nowTick, setNowTick] = useState(0);
   const [dateDraft, setDateDraft] = useState("");
 
@@ -158,35 +112,28 @@ export default function FeedClient({ slug }: { slug: string }) {
   );
 
   const progressRef = useRef<Map<string, CardProgress>>(new Map());
-  /** Render-safe snapshot of progress (refs must not be read during render). */
+  /** Render-safe snapshot of progress (refs are never read during render). */
   const [progressSnapshot, setProgressSnapshot] = useState<Map<string, CardProgress>>(new Map());
   const containerRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const startedAtRef = useRef(0);
   const summarySavedRef = useRef(false);
-  const skipRecordedRef = useRef<Set<number>>(new Set());
-  /**
-   * First-shown timestamps per slot index. State drives render (the ref must
-   * never be read during render — React compiler rule); the ref mirror gives
-   * scroll/keyboard handlers a synchronous view. Both are written only from
-   * event/init contexts via markShown.
-   */
-  const [shownAtMap, setShownAtMap] = useState<Record<number, number>>({});
-  const shownAtRef = useRef<Record<number, number>>({});
-  const markShown = useCallback((idx: number) => {
-    if (shownAtRef.current[idx]) return;
-    shownAtRef.current = { ...shownAtRef.current, [idx]: Date.now() };
-    setShownAtMap(shownAtRef.current);
-  }, []);
   const scheduler = useMemo(
     () => makeScheduler(settings?.retentionTarget ?? 0.9),
     [settings?.retentionTarget],
   );
+  /** Synchronous mirror of session for event handlers (never read in render). */
+  const sessionRef = useRef(session);
+  const resetSession = useCallback((now: number) => {
+    const fresh = createSession(now);
+    sessionRef.current = fresh;
+    setSession(fresh);
+  }, []);
 
   const examSettings = settings?.exams[exam.manifest.id];
   const examDate = examSettings?.examDate ?? null;
 
-  /* ---------- measured chrome heights → CSS vars (A11 defect 5) ---------- */
+  /* ---------- measured chrome heights → CSS vars (A11) ---------- */
   const measureInto = useCallback((cssVar: string) => {
     let ro: ResizeObserver | null = null;
     return (el: HTMLElement | null) => {
@@ -201,10 +148,9 @@ export default function FeedClient({ slug }: { slug: string }) {
   }, []);
   const measureHud = useMemo(() => measureInto("--hud-h"), [measureInto]);
 
-  /* The action bar is owned by the active ItemSlot, so the parent measures
-   * it by query instead of threading a callback ref through props (the
-   * React compiler cannot verify a props-passed ref isn't read in render). */
-  const [slotStatesVersion, setSlotStatesVersion] = useState(0);
+  /* The action bar is owned by the active ItemSlot; the parent measures it
+   * by query (a props-threaded ref cannot be verified render-safe). */
+  const [barVersion, setBarVersion] = useState(0);
   useEffect(() => {
     const el = document.querySelector('[data-qa="action-bar"]') as HTMLElement | null;
     const root = rootRef.current;
@@ -218,7 +164,7 @@ export default function FeedClient({ slug }: { slug: string }) {
     ro.observe(el);
     apply();
     return () => ro.disconnect();
-  }, [activeIdx, slotStatesVersion, loading]);
+  }, [session.activeIdx, barVersion, loading]);
 
   /* ---------- init ---------- */
   useEffect(() => {
@@ -235,7 +181,6 @@ export default function FeedClient({ slug }: { slug: string }) {
       const now = Date.now();
       startedAtRef.current = now;
       const es = s.exams[exam.manifest.id];
-      // A11 determinism: ?qaseed= (or NEXT_PUBLIC_QA_SEED) fixes the queue.
       const params = new URLSearchParams(window.location.search);
       const seedParam = params.get("qaseed") ?? process.env.NEXT_PUBLIC_QA_SEED;
       const seed = seedParam ? Number(seedParam) : now % 2 ** 31;
@@ -249,7 +194,6 @@ export default function FeedClient({ slug }: { slug: string }) {
         now,
         rng: mulberry32(seed),
       });
-      // A11 worst-case pinning: ?qafirst=<id> moves an item to the front.
       const qaFirst = params.get("qafirst");
       if (qaFirst) {
         const hit = queue.find((i) => i.id === qaFirst);
@@ -276,118 +220,88 @@ export default function FeedClient({ slug }: { slug: string }) {
           built.push({ type: "checkpoint", ordinal: (i + 1) / CHECKPOINT_EVERY });
       });
       built.push({ type: "summary" });
-      markShown(0);
       setSettings(s);
       setSlots(built);
-      setNowTick(Date.now());
+      resetSession(now);
+      setNowTick(now);
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [exam, cardsById, questionsById, markShown]);
+  }, [exam, cardsById, questionsById, resetSession]);
 
   /* ---------- visible slots under the domain filter ---------- */
   const visibleSlots = useMemo(() => {
     if (!domainFilter) return slots;
-    return slots.filter(
-      (s) => s.type !== "item" || s.item.domainId === domainFilter,
-    );
+    return slots.filter((s) => s.type !== "item" || s.item.domainId === domainFilter);
   }, [slots, domainFilter]);
 
-  /* ---------- 2s reveal arming tick ---------- */
+  const changeFilter = (d: string | null) => {
+    // Slot indexes are session keys; a filter change re-indexes the list, so
+    // it starts a fresh visible session (records already persisted stand).
+    setDomainFilter(d);
+    resetSession(Date.now());
+    containerRef.current?.scrollTo({ top: 0 });
+  };
+
+  /* ---------- 2s arming tick ---------- */
   useEffect(() => {
     const t = setInterval(() => setNowTick(Date.now()), 250);
     return () => clearInterval(t);
   }, []);
 
-  /* ---------- scroll → active slot + skip-as-lapse ---------- */
-  const recordSkip = useCallback(
-    (idx: number) => {
-      const slot = visibleSlots[idx];
-      if (!slot || slot.type !== "item") return;
-      const st = slotStates[idx] ?? {};
-      // The ref guards against double-recording when several scroll events
-      // land before React re-renders slotStates.
-      if (st.graded || st.skipped || !shownAtRef.current[idx] || skipRecordedRef.current.has(idx))
-        return;
-      skipRecordedRef.current.add(idx);
-      setSlotStates((prev) => ({ ...prev, [idx]: { ...(prev[idx] ?? {}), skipped: true } }));
-      applyResult(slot.item, false, "again", null, Date.now(), true);
+  /* ---------- dispatch with side effects (event context only) ----------
+   * The reducer runs OUTSIDE the setState updater (updaters must stay pure:
+   * StrictMode double-invokes them, which would double-write reviews). A ref
+   * mirror gives handlers the current session synchronously. */
+  const dispatch = useCallback(
+    (action: FeedAction) => {
+      const prev = sessionRef.current;
+      const next = reduceSession(prev, action);
+      if (next === prev) return;
+      // Persist any NEW records (grade or skip-lapse), exactly once each.
+      for (const rec of next.records.slice(prev.records.length)) {
+        const slot = visibleSlots[rec.idx];
+        if (!slot || slot.type !== "item") continue;
+        const item = slot.item;
+        const now = rec.at;
+        const before =
+          progressRef.current.get(item.id) ??
+          initialProgress(item.id, exam.manifest.id, item.domainId, now);
+        const advanced = advanceState(before, rec.correct, now);
+        const { card, intervalDays } = scheduler.review(before.fsrs, rec.grade, now);
+        const clamped = clampInterval(intervalDays, now, examDate);
+        const updated: CardProgress = {
+          ...advanced,
+          fsrs: { ...card, due: new Date(now + clamped * DAY_MS) },
+        };
+        progressRef.current.set(item.id, updated);
+        setProgressSnapshot(new Map(progressRef.current));
+        if (
+          rec.correct &&
+          CARD_STATE_ORDER.indexOf(updated.state) > CARD_STATE_ORDER.indexOf(before.state)
+        )
+          setPromotions((p) => p + 1);
+        void saveProgress(updated);
+        void appendEvent({
+          cardId: item.id,
+          examId: exam.manifest.id,
+          domainId: item.domainId,
+          at: now,
+          grade: rec.grade,
+          confidence: rec.confidence,
+          correct: rec.correct,
+          ...(rec.skipped ? { skipped: true } : {}),
+        });
+        if (typeof navigator !== "undefined") navigator.vibrate?.(rec.correct ? 8 : [20, 30, 20]);
+      }
+      sessionRef.current = next;
+      setSession(next);
+      setBarVersion((v) => v + 1);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [visibleSlots, slotStates],
+    [visibleSlots, exam, scheduler, examDate],
   );
-
-  const onScroll = useCallback(() => {
-    const el = containerRef.current;
-    if (!el || !el.clientHeight) return;
-    const idx = Math.round(el.scrollTop / el.clientHeight);
-    markShown(idx);
-    setActiveIdx((prev) => {
-      if (idx > prev) for (let i = prev; i < idx; i++) recordSkip(i);
-      return idx;
-    });
-  }, [recordSkip, markShown]);
-
-  /* ---------- core recording ---------- */
-  function applyResult(
-    item: QueueItem,
-    correct: boolean,
-    grade: ReviewGrade,
-    confidence: Confidence | null,
-    now: number,
-    skipped = false,
-  ) {
-    const prev =
-      progressRef.current.get(item.id) ??
-      initialProgress(item.id, exam.manifest.id, item.domainId, now);
-    const advanced = advanceState(prev, correct, now);
-    const { card, intervalDays } = scheduler.review(prev.fsrs, grade, now);
-    const clamped = clampInterval(intervalDays, now, examDate);
-    const due = new Date(now + clamped * DAY_MS);
-    const next: CardProgress = { ...advanced, fsrs: { ...card, due } };
-    progressRef.current.set(item.id, next);
-    setProgressSnapshot(new Map(progressRef.current));
-    void saveProgress(next);
-    void appendEvent({
-      cardId: item.id,
-      examId: exam.manifest.id,
-      domainId: item.domainId,
-      at: now,
-      grade,
-      confidence,
-      correct,
-      ...(skipped ? { skipped: true } : {}),
-    });
-    const promoted =
-      CARD_STATE_ORDER.indexOf(next.state) > CARD_STATE_ORDER.indexOf(prev.state) && correct;
-    setStats((s) => {
-      const dom = item.domainId ?? "cross";
-      const byDomain = {
-        ...s.byDomain,
-        [dom]: {
-          seen: (s.byDomain[dom]?.seen ?? 0) + 1,
-          correct: (s.byDomain[dom]?.correct ?? 0) + (correct ? 1 : 0),
-        },
-      };
-      return {
-        ...s,
-        answered: s.answered + 1,
-        correct: s.correct + (correct ? 1 : 0),
-        lapses: s.lapses + (correct ? 0 : 1),
-        skipped: s.skipped + (skipped ? 1 : 0),
-        promotions: s.promotions + (promoted ? 1 : 0),
-        streak: correct ? s.streak + 1 : 0,
-        times: s.times,
-        attempts: confidence
-          ? [...s.attempts, { domainId: item.domainId, confidence, correct }]
-          : s.attempts,
-        byDomain,
-      };
-    });
-    if (typeof navigator !== "undefined") navigator.vibrate?.(correct ? 8 : [20, 30, 20]);
-  }
 
   const advanceTo = useCallback((idx: number) => {
     const el = containerRef.current;
@@ -395,35 +309,18 @@ export default function FeedClient({ slug }: { slug: string }) {
     el.scrollTo({ top: idx * el.clientHeight, behavior: "smooth" });
   }, []);
 
-  /* ---------- per-slot interaction handlers ---------- */
-  const setSlot = (idx: number, patch: Partial<SlotState>) => {
-    setSlotStates((prev) => ({ ...prev, [idx]: { ...(prev[idx] ?? {}), ...patch } }));
-    setSlotStatesVersion((v) => v + 1); // re-measure the action bar (its height changes per state)
-  };
-
-  function onAttempt(idx: number, mcPick?: number) {
-    const st = slotStates[idx] ?? {};
-    if (st.attempted || st.graded) return;
-    setSlot(idx, { attempted: { mcPick, at: Date.now() } });
-  }
-
-  function onConfidence(idx: number, c: Confidence) {
-    const st = slotStates[idx] ?? {};
-    if (!st.attempted || st.confidence || st.graded) return;
-    setSlot(idx, { confidence: c, revealed: true });
-  }
+  const onScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el || !el.clientHeight) return;
+    const idx = Math.round(el.scrollTop / el.clientHeight);
+    if (idx !== sessionRef.current.activeIdx) dispatch({ type: "activate", idx, at: Date.now() });
+  }, [dispatch]);
 
   function onGrade(idx: number, item: QueueItem, grade: ReviewGrade) {
-    const st = slotStates[idx] ?? {};
-    if (!st.revealed || st.graded) return;
-    const now = Date.now();
+    const st = session.slots[idx] ?? {};
     const q = item.kind === "question" ? questionsById.get(item.id) : undefined;
     const correct = q ? st.attempted?.mcPick === q.correctIndex : grade !== "again";
-    const shownAt = shownAtRef.current[idx];
-    const durationMs = shownAt ? now - shownAt : 0;
-    setSlot(idx, { graded: true, correct, durationMs });
-    setStats((s) => ({ ...s, times: [...s.times, durationMs] }));
-    applyResult(item, correct, grade, st.confidence ?? null, now);
+    dispatch({ type: "grade", idx, grade, correct, at: Date.now() });
     window.setTimeout(() => advanceTo(idx + 1), 350);
   }
 
@@ -431,7 +328,7 @@ export default function FeedClient({ slug }: { slug: string }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return;
-      const idx = activeIdx;
+      const idx = session.activeIdx;
       const slot = visibleSlots[idx];
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -444,64 +341,100 @@ export default function FeedClient({ slug }: { slug: string }) {
         return;
       }
       if (!slot || slot.type !== "item") return;
-      const st = slotStates[idx] ?? {};
+      const st = session.slots[idx] ?? {};
       const item = slot.item;
       const isQuestion = item.kind === "question";
-      if (e.key === " " && !isQuestion && !st.attempted) {
+      if (e.key === " " && !isQuestion && !st.attempted && !st.skipped) {
         e.preventDefault();
-        const shownAt = shownAtRef.current[idx];
-        if (shownAt && Date.now() - shownAt >= REVEAL_ARM_MS) onAttempt(idx);
+        if (isArmed(session, idx, Date.now())) dispatch({ type: "attempt", idx, at: Date.now() });
         return;
       }
       const n = Number(e.key);
       if (n >= 1 && n <= 4) {
         e.preventDefault();
-        if (!st.attempted && isQuestion) onAttempt(idx, n - 1);
-        else if (st.attempted && !st.confidence) onConfidence(idx, CONFIDENCES[n - 1]);
+        if (st.skipped) return; // grading locked after a skip-lapse
+        if (!st.attempted && isQuestion)
+          dispatch({ type: "attempt", idx, at: Date.now(), mcPick: n - 1 });
+        else if (st.attempted && !st.confidence)
+          dispatch({ type: "confidence", idx, confidence: CONFIDENCES[n - 1] });
         else if (st.revealed && !st.graded) onGrade(idx, item, GRADES[n - 1]);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeIdx, visibleSlots, slotStates]);
+  }, [session, visibleSlots]);
 
-  /* ---------- session summary persistence ---------- */
+  /* ---------- session summary ---------- */
+  const counters = sessionCounters(session);
+  const itemAt = useCallback(
+    (idx: number): QueueItem | null => {
+      const s = visibleSlots[idx];
+      return s && s.type === "item" ? s.item : null;
+    },
+    [visibleSlots],
+  );
+
+  const confidenceAttempts = useMemo(
+    () =>
+      session.records
+        .filter((r) => r.confidence !== null)
+        .map((r) => ({
+          domainId: itemAt(r.idx)?.domainId ?? null,
+          confidence: r.confidence as Confidence,
+          correct: r.correct,
+        })),
+    [session.records, itemAt],
+  );
+
   const sessionGap = useMemo(() => {
-    if (!stats.attempts.length) return null;
+    if (!confidenceAttempts.length) return null;
     const CONF = { guess: 0.25, unsure: 0.5, confident: 0.75, certain: 0.95 } as const;
-    const stated = stats.attempts.reduce((a, x) => a + CONF[x.confidence], 0) / stats.attempts.length;
-    const acc = stats.attempts.filter((x) => x.correct).length / stats.attempts.length;
+    const stated =
+      confidenceAttempts.reduce((a, x) => a + CONF[x.confidence], 0) / confidenceAttempts.length;
+    const acc = confidenceAttempts.filter((x) => x.correct).length / confidenceAttempts.length;
     return stated - acc;
-  }, [stats.attempts]);
+  }, [confidenceAttempts]);
+
+  const byDomain = useMemo(() => {
+    const out: Record<string, { seen: number; correct: number }> = {};
+    for (const r of session.records) {
+      const d = itemAt(r.idx)?.domainId ?? "cross";
+      out[d] = { seen: (out[d]?.seen ?? 0) + 1, correct: (out[d]?.correct ?? 0) + (r.correct ? 1 : 0) };
+    }
+    return out;
+  }, [session.records, itemAt]);
 
   const weakestDomain = useMemo(() => {
-    const entries = Object.entries(stats.byDomain).filter(([k]) => k !== "cross");
+    const entries = Object.entries(byDomain).filter(([k]) => k !== "cross");
     if (!entries.length) return null;
-    return entries.reduce((w, e) =>
-      e[1].correct / e[1].seen < w[1].correct / w[1].seen ? e : w,
-    )[0];
-  }, [stats.byDomain]);
+    return entries.reduce((w, e) => (e[1].correct / e[1].seen < w[1].correct / w[1].seen ? e : w))[0];
+  }, [byDomain]);
 
   useEffect(() => {
     const summaryIdx = visibleSlots.findIndex((s) => s.type === "summary");
-    if (summaryIdx !== -1 && activeIdx === summaryIdx && !summarySavedRef.current && stats.answered > 0) {
+    if (
+      summaryIdx !== -1 &&
+      session.activeIdx === summaryIdx &&
+      !summarySavedRef.current &&
+      counters.answered > 0
+    ) {
       summarySavedRef.current = true;
       void addSession({
         examId: exam.manifest.id,
         startedAt: startedAtRef.current,
         endedAt: Date.now(),
-        answered: stats.answered,
-        correct: stats.correct,
-        lapses: stats.lapses,
-        skipped: stats.skipped,
-        promotions: stats.promotions,
+        answered: counters.answered,
+        correct: counters.correct,
+        lapses: counters.lapses,
+        skipped: counters.skipped,
+        promotions,
         calibrationGap: sessionGap,
-        medianMsPerCard: median(stats.times),
+        medianMsPerCard: medianMsPerCard(session),
         weakestDomainId: weakestDomain,
       });
     }
-  }, [activeIdx, visibleSlots, stats, sessionGap, weakestDomain, exam.manifest.id]);
+  }, [session, visibleSlots, counters, promotions, sessionGap, weakestDomain, exam.manifest.id]);
 
   async function saveExamDate() {
     if (!settings || !/^\d{4}-\d{2}-\d{2}$/.test(dateDraft)) return;
@@ -546,11 +479,11 @@ export default function FeedClient({ slug }: { slug: string }) {
           <span className="font-bold" style={{ color: accent }}>
             {exam.manifest.shortName}
           </span>
-          <span aria-label={`streak ${stats.streak}`} className="text-amber-400">
-            🔥 {stats.streak}
+          <span aria-label={`streak ${counters.streak}`} className="text-amber-400">
+            🔥 {counters.streak}
           </span>
           <span className="text-neutral-400">
-            {stats.answered}/{total}
+            {counters.answered}/{total}
           </span>
           <div className="ml-auto flex gap-2">
             {otherExams.map((e) => (
@@ -566,7 +499,7 @@ export default function FeedClient({ slug }: { slug: string }) {
         </div>
         <div className="pointer-events-auto mt-1 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] [@media(max-height:480px)]:hidden">
           <button
-            onClick={() => setDomainFilter(null)}
+            onClick={() => changeFilter(null)}
             className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border px-3 text-[11px] ${!domainFilter ? "border-neutral-400 text-neutral-100" : "border-neutral-700 text-neutral-500"}`}
           >
             All
@@ -574,7 +507,7 @@ export default function FeedClient({ slug }: { slug: string }) {
           {exam.manifest.domains.map((d) => (
             <button
               key={d.id}
-              onClick={() => setDomainFilter(domainFilter === d.id ? null : d.id)}
+              onClick={() => changeFilter(domainFilter === d.id ? null : d.id)}
               className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border px-3 text-[11px] ${domainFilter === d.id ? "text-white" : "border-neutral-700 text-neutral-500"}`}
               style={domainFilter === d.id ? { backgroundColor: d.color, borderColor: d.color } : {}}
             >
@@ -609,7 +542,7 @@ export default function FeedClient({ slug }: { slug: string }) {
         )}
       </div>
 
-      {/* ── snap feed: every slot rendered at fixed height, content windowed ── */}
+      {/* ── snap feed ── */}
       <div
         ref={containerRef}
         onScroll={onScroll}
@@ -617,14 +550,14 @@ export default function FeedClient({ slug }: { slug: string }) {
         className="h-dvh snap-y snap-mandatory overflow-y-scroll overscroll-none [scrollbar-width:none]"
       >
         {visibleSlots.map((slot, idx) => {
-          const inWindow = Math.abs(idx - activeIdx) <= 2;
+          const inWindow = Math.abs(idx - session.activeIdx) <= 2;
           return (
             <section
               key={idx}
               data-qa="slot"
               data-slot-type={slot.type}
               className="h-dvh snap-start [scroll-snap-stop:always]"
-              aria-hidden={idx !== activeIdx}
+              aria-hidden={idx !== session.activeIdx}
             >
               {inWindow && slot.type === "item" && (
                 <ItemSlot
@@ -638,33 +571,82 @@ export default function FeedClient({ slug }: { slug: string }) {
                       : "Cross-domain"
                   }
                   accent={accent}
-                  st={slotStates[idx] ?? {}}
-                  active={idx === activeIdx}
-                  shownAt={shownAtMap[idx]}
+                  st={session.slots[idx] ?? {}}
+                  active={idx === session.activeIdx}
+                  shownAt={session.shownAt[idx]}
                   now={nowTick}
                   reducedMotion={reducedMotion}
                   flipStyle={flipStyle}
-                  onAttempt={onAttempt}
-                  onConfidence={onConfidence}
+                  dispatch={dispatch}
                   onGrade={onGrade}
                 />
               )}
               {inWindow && slot.type === "checkpoint" && (
-                <CheckpointSlot exam={exam} stats={stats} sessionGap={sessionGap} progress={progressSnapshot} />
+                <CheckpointSlot
+                  exam={exam}
+                  counters={counters}
+                  sessionGap={sessionGap}
+                  progress={progressSnapshot}
+                />
               )}
               {inWindow && slot.type === "summary" && (
                 <SummarySlot
-                  stats={stats}
+                  counters={counters}
+                  promotions={promotions}
                   sessionGap={sessionGap}
-                  weakestDomain={weakestDomain ? (domainsById.get(weakestDomain)?.name ?? weakestDomain) : null}
-                  medianMs={median(stats.times)}
-                  slug={slug}
+                  weakestDomain={
+                    weakestDomain ? (domainsById.get(weakestDomain)?.name ?? weakestDomain) : null
+                  }
+                  medianMs={medianMsPerCard(session)}
                 />
               )}
             </section>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/* ================= fade-scroll wrapper (A11 review, finding 1) ================= */
+
+function FadeScroll(props: {
+  dataQa: string;
+  className?: string;
+  fadeColor: string;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [clipped, setClipped] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setClipped(el.scrollHeight - el.scrollTop - el.clientHeight > 8);
+    const ro = new ResizeObserver(update); // fires async on observe → initial state
+    ro.observe(el);
+    el.addEventListener("scroll", update, { passive: true });
+    return () => {
+      ro.disconnect();
+      el.removeEventListener("scroll", update);
+    };
+  }, []);
+  return (
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={ref}
+        data-qa={props.dataQa}
+        className={`feed-scroll-pad min-h-0 flex-1 overflow-y-auto overscroll-contain ${props.className ?? ""}`}
+      >
+        {props.children}
+      </div>
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-12 transition-opacity duration-150"
+        style={{
+          backgroundImage: `linear-gradient(to top, ${props.fadeColor}, transparent)`,
+          opacity: clipped ? 1 : 0,
+        }}
+      />
     </div>
   );
 }
@@ -678,34 +660,33 @@ function ItemSlot(props: {
   question?: Question;
   domainName: string;
   accent: string;
-  st: SlotState;
+  st: SlotUiState;
   active: boolean;
   shownAt: number | undefined;
   now: number;
   reducedMotion: boolean;
   flipStyle: (revealed: boolean) => React.CSSProperties;
-  onAttempt: (idx: number, mcPick?: number) => void;
-  onConfidence: (idx: number, c: Confidence) => void;
+  dispatch: (a: FeedAction) => void;
   onGrade: (idx: number, item: QueueItem, g: ReviewGrade) => void;
 }) {
-  const { idx, item, card, question, domainName, st, active } = props;
+  const { idx, item, card, question, domainName, st, active, dispatch } = props;
   const revealed = !!st.revealed;
   const isQuestion = item.kind === "question";
   const armed = !!props.shownAt && props.now - props.shownAt >= REVEAL_ARM_MS;
   const typeLabel = isQuestion ? TYPE_LABEL.question : TYPE_LABEL[card?.type ?? "recall"];
-  // A11 defect 4: never render two chips with identical text — the mode chip
-  // is skipped when it normalizes to the same words as the type chip.
   const modeLabel =
     item.mode.replace(/-/g, " ") === typeLabel ? null : item.mode.replace(/-/g, " ");
   const front = isQuestion ? question?.question : card?.front;
   const mcWrong = isQuestion && st.attempted?.mcPick !== question?.correctIndex;
-  const cardState = st.graded
-    ? "graded"
-    : st.revealed
-      ? "revealed"
-      : st.attempted
-        ? "attempted"
-        : "front";
+  const cardState = st.skipped
+    ? "skipped"
+    : st.graded
+      ? "graded"
+      : st.revealed
+        ? "revealed"
+        : st.attempted
+          ? "attempted"
+          : "front";
 
   return (
     <div
@@ -714,46 +695,44 @@ function ItemSlot(props: {
       data-card-state={cardState}
       className="feed-slot-pad mx-auto flex h-full max-w-xl flex-col px-4"
     >
-      {/* meta row (hidden at short heights to preserve the card region) */}
+      {/* meta row (hidden at short heights) */}
       <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wider [@media(max-height:480px)]:hidden">
         <span className="text-neutral-500">{domainName}</span>
         <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-neutral-400">
           {typeLabel}
         </span>
         {modeLabel && (
-          <span
-            className="rounded-full border border-neutral-800 px-2 py-0.5 text-neutral-500"
-            title="Diátaxis mode (A10)"
-          >
+          <span className="rounded-full border border-neutral-800 px-2 py-0.5 text-neutral-500" title="Diátaxis mode (A10)">
             {modeLabel}
           </span>
         )}
-        <span
-          className={`rounded-full border px-2 py-0.5 ${REASON_STYLE[item.reason]}`}
-          title="Why this card was selected"
-        >
+        <span className={`rounded-full border px-2 py-0.5 ${REASON_STYLE[item.reason]}`} title="Why this card was selected">
           {REASON_LABEL[item.reason]}
         </span>
-        {st.skipped && <span className="text-red-400">skipped — counted as a lapse</span>}
       </div>
+      {st.skipped && (
+        <div data-qa="skip-lock-label" className="mb-2 text-[11px] font-semibold text-red-400">
+          Recorded as a lapse (skipped) — grading locked; this card will return in the queue.
+        </div>
+      )}
 
       {/* flip container */}
       <div className="relative min-h-0 flex-1" style={{ perspective: 1400 }}>
         <div className="relative h-full w-full" style={props.flipStyle(revealed)}>
-          {/* FRONT — one scroll region for question + options (A11 defect 1) */}
+          {/* FRONT — one scroll region with fade mask */}
           <div
             className={`absolute inset-0 flex flex-col overflow-hidden rounded-2xl border border-neutral-800 bg-[#101722] p-4 [@media(max-height:480px)]:p-3 ${props.reducedMotion ? (revealed ? "hidden" : "") : "[backface-visibility:hidden]"}`}
             aria-hidden={revealed}
           >
-            <div data-qa="card-front-scroll" className="feed-scroll-pad min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <FadeScroll dataQa="card-front-scroll" fadeColor="#101722">
               <p className="text-base font-semibold leading-relaxed sm:text-lg">{front}</p>
               {isQuestion && question && (
                 <div className="mt-4 space-y-2 pb-1">
                   {question.options.map((o, i) => (
                     <button
                       key={i}
-                      onClick={() => props.onAttempt(idx, i)}
-                      disabled={!!st.attempted}
+                      onClick={() => dispatch({ type: "attempt", idx, at: Date.now(), mcPick: i })}
+                      disabled={!!st.attempted || st.skipped}
                       className={`min-h-11 w-full rounded-xl border p-3 text-left text-sm ${st.attempted?.mcPick === i ? "border-neutral-300 bg-neutral-800" : "border-neutral-700 bg-neutral-900/60"}`}
                     >
                       <span className="mr-2 font-bold text-neutral-500">
@@ -764,18 +743,38 @@ function ItemSlot(props: {
                   ))}
                 </div>
               )}
-              {!isQuestion && !st.attempted && (
+              {!isQuestion && !st.attempted && !st.skipped && (
                 <button
                   data-qa="recall-attempt"
-                  onClick={() => armed && props.onAttempt(idx)}
+                  onClick={() => armed && dispatch({ type: "attempt", idx, at: Date.now() })}
                   disabled={!armed || !active}
-                  className="feed-attempt-sticky mt-3 min-h-11 w-full rounded-xl bg-clip-padding p-3 text-base font-bold text-black transition-opacity disabled:opacity-40"
+                  className="feed-attempt-sticky relative mt-3 min-h-11 w-full overflow-hidden rounded-xl p-3 text-base font-bold text-black transition-opacity disabled:opacity-60"
                   style={{ backgroundColor: props.accent }}
                 >
-                  {armed ? "I've recalled it — show answer" : "Recall it first…"}
+                  {/* 2s arming made legible: a fill completes over the delay
+                      (the delay itself is the mechanism and stays 2s). */}
+                  {!armed && active && (
+                    <span
+                      key={props.shownAt ?? 0}
+                      aria-hidden
+                      className="rapids-arm-fill absolute inset-y-0 left-0 bg-black/25"
+                    />
+                  )}
+                  <span className="relative">
+                    {armed ? "I've recalled it — show answer" : "Recall it first…"}
+                  </span>
                 </button>
               )}
-            </div>
+              {st.skipped && !st.revealed && (
+                <button
+                  data-qa="reveal-skipped"
+                  onClick={() => dispatch({ type: "reveal-skipped", idx })}
+                  className="mt-3 min-h-11 w-full rounded-xl border border-neutral-600 p-3 text-base font-semibold text-neutral-200"
+                >
+                  Show answer (already recorded as a lapse)
+                </button>
+              )}
+            </FadeScroll>
           </div>
 
           {/* BACK */}
@@ -791,7 +790,7 @@ function ItemSlot(props: {
             >
               Answer
             </div>
-            <div data-qa="card-back-scroll" className="feed-scroll-pad min-h-0 flex-1 overflow-y-auto overscroll-contain text-sm leading-relaxed">
+            <FadeScroll dataQa="card-back-scroll" fadeColor="#0E1520" className="text-sm leading-relaxed">
               {isQuestion && question ? (
                 <div className="space-y-2">
                   {question.options.map((o, i) => {
@@ -810,9 +809,7 @@ function ItemSlot(props: {
                     );
                   })}
                   <p className="whitespace-pre-wrap pt-2 text-neutral-300">{question.explanation}</p>
-                  {question.examTakeaway && (
-                    <p className="text-neutral-400">💡 {question.examTakeaway}</p>
-                  )}
+                  {question.examTakeaway && <p className="text-neutral-400">💡 {question.examTakeaway}</p>}
                   {!question.distractorRationale && (
                     <p className="text-xs text-amber-500">
                       ⚠ explanation incomplete — covers the correct answer only (see /gaps)
@@ -822,13 +819,13 @@ function ItemSlot(props: {
               ) : (
                 <p className="whitespace-pre-wrap">{card?.back}</p>
               )}
-            </div>
+            </FadeScroll>
           </div>
         </div>
       </div>
 
-      {/* ── bottom action bar (measured into --bar-h): confidence, then grades ── */}
-      {active && !st.graded && (
+      {/* ── bottom action bar: confidence, then grades, same position ── */}
+      {active && !st.graded && !st.skipped && (
         <div
           data-qa="action-bar"
           className="fixed inset-x-0 bottom-0 z-30 bg-gradient-to-t from-[#0B1017] via-[#0B1017]/95 to-transparent px-4 pb-3 pt-6 [@media(max-height:480px)]:pb-2 [@media(max-height:480px)]:pt-2"
@@ -843,7 +840,7 @@ function ItemSlot(props: {
                   {CONFIDENCES.map((c, i) => (
                     <button
                       key={c}
-                      onClick={() => props.onConfidence(idx, c)}
+                      onClick={() => dispatch({ type: "confidence", idx, confidence: c })}
                       className="min-h-11 rounded-xl border border-neutral-700 bg-neutral-900 py-2.5 text-sm font-semibold capitalize"
                     >
                       <span className="mr-1 text-[10px] text-neutral-600">{i + 1}</span>
@@ -889,10 +886,12 @@ function ItemSlot(props: {
           </div>
         </div>
       )}
-      {active && st.graded && (
+      {active && (st.graded || st.skipped) && (
         <div data-qa="action-bar" className="fixed inset-x-0 bottom-0 z-30 px-4 pb-4">
           <div className="mx-auto max-w-xl text-center text-xs text-neutral-500">
-            {st.correct ? "✓ recorded" : "✗ recorded"} — swipe up for the next card ↑
+            {st.skipped
+              ? "Lapse recorded — swipe up to continue ↑"
+              : `${st.correct ? "✓" : "✗"} recorded — swipe up for the next card ↑`}
           </div>
         </div>
       )}
@@ -904,21 +903,22 @@ function ItemSlot(props: {
 
 function CheckpointSlot(props: {
   exam: ExamContent;
-  stats: SessionStats;
+  counters: ReturnType<typeof sessionCounters>;
   sessionGap: number | null;
   progress: Map<string, CardProgress>;
 }) {
-  const { exam, stats, sessionGap, progress } = props;
+  const { exam, counters, sessionGap, progress } = props;
   const rows = exam.manifest.domains
     .filter((d) => !d.bonus)
     .map((d) => {
       const items = [...progress.values()].filter((p) => p.domainId === d.id);
       const settled = items.filter((p) => p.state === "durable" || p.state === "maintenance");
-      const total = exam.cards.filter((c) => c.domainId === d.id).length +
+      const total =
+        exam.cards.filter((c) => c.domainId === d.id).length +
         exam.questions.filter((q) => q.domainId === d.id).length;
       return { d, pct: total ? Math.floor((settled.length / total) * 100) : 0 };
     });
-  const acc = stats.answered ? Math.round((stats.correct / stats.answered) * 100) : 0;
+  const acc = counters.answered ? Math.round((counters.correct / counters.answered) * 100) : 0;
   return (
     <div
       data-qa="checkpoint"
@@ -927,9 +927,9 @@ function CheckpointSlot(props: {
     >
       <h2 className="text-xl font-bold">Checkpoint</h2>
       <p className="mb-4 text-xs text-neutral-500">
-        {stats.answered} answered · {acc}% accuracy
+        {counters.answered} answered · {acc}% accuracy
         {sessionGap !== null && ` · calibration gap ${(sessionGap * 100).toFixed(0)}pp`} · streak{" "}
-        {stats.streak}. Not a reward screen — a mirror.
+        {counters.streak}. Not a reward screen — a mirror.
       </p>
       {rows.map(({ d, pct }) => (
         <div key={d.id} className="mb-3">
@@ -950,13 +950,13 @@ function CheckpointSlot(props: {
 /* ================= summary ================= */
 
 function SummarySlot(props: {
-  stats: SessionStats;
+  counters: ReturnType<typeof sessionCounters>;
+  promotions: number;
   sessionGap: number | null;
   weakestDomain: string | null;
   medianMs: number | null;
-  slug: string;
 }) {
-  const { stats, sessionGap, weakestDomain, medianMs } = props;
+  const { counters, promotions, sessionGap, weakestDomain, medianMs } = props;
   return (
     <div
       data-qa="summary"
@@ -967,16 +967,18 @@ function SummarySlot(props: {
       <dl className="mt-5 space-y-3 text-sm">
         <div className="flex justify-between border-b border-neutral-800 pb-2">
           <dt className="text-neutral-400">Cards learned (state promotions)</dt>
-          <dd className="font-bold">{stats.promotions}</dd>
+          <dd className="font-bold">{promotions}</dd>
         </div>
         <div className="flex justify-between border-b border-neutral-800 pb-2">
-          <dt className="text-neutral-400">Lapses (incl. {stats.skipped} skipped)</dt>
-          <dd className="font-bold">{stats.lapses}</dd>
+          <dt className="text-neutral-400">Lapses (incl. {counters.skipped} skipped)</dt>
+          <dd className="font-bold">{counters.lapses}</dd>
         </div>
         <div className="flex justify-between border-b border-neutral-800 pb-2">
           <dt className="text-neutral-400">Session calibration gap</dt>
           <dd className="font-bold">
-            {sessionGap === null ? "—" : `${sessionGap > 0 ? "+" : ""}${(sessionGap * 100).toFixed(0)}pp`}
+            {sessionGap === null
+              ? "—"
+              : `${sessionGap > 0 ? "+" : ""}${(sessionGap * 100).toFixed(0)}pp`}
           </dd>
         </div>
         <div className="flex justify-between border-b border-neutral-800 pb-2">
@@ -994,7 +996,11 @@ function SummarySlot(props: {
           ? `drill ${weakestDomain} — it was your weakest this session.`
           : "come back tomorrow; criterion needs separate days."}
       </p>
-      <Link href="/" className="mt-6 flex min-h-11 items-center justify-center text-center text-sm underline" style={{ color: "#7FB8DE" }}>
+      <Link
+        href="/"
+        className="mt-6 flex min-h-11 items-center justify-center text-center text-sm underline"
+        style={{ color: "#7FB8DE" }}
+      >
         Back to exams
       </Link>
     </div>

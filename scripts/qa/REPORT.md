@@ -54,6 +54,9 @@ Additional defects the loop itself surfaced:
 | F8 | "All" filter chip 38×44 — tap target fail | check 6 | 38px wide | `min-w-11 justify-center` on all HUD chips; 0 failures |
 | F9 | Card scroll region 199px at phone-landscape — 1px under the 200px floor | check 1 | `clientHeight=199` | card-face padding compacts at ≤480px heights; content scrolls UNDER the action bar with its own bottom padding (`.feed-scroll-pad`), region now >210px |
 | F10 | Dump `<pre>` JSON illegible in dark scheme (light `bg-neutral-100`, inherited light text) | Part-3 sheet review (contrast check had it, report-only) | ~1.1:1 contrast | `text-neutral-900` on the pre blocks |
+| F11 (= filed D5) | Home page shipped "Phase 1 content dump / No study UI yet" while linking a working Feed | **Nothing** — prose defects were outside the assertion vocabulary, which is why the reconstruction in §2 could not recover it (see docs/explanation/why-instrumentation-blindness-is-unrecoverable.md) | build-status copy live in production | real product copy; plus check 10 (copy audit) now fails any shipped-route chrome containing phase references, build-status disclaimers, or TODO markers — the class, not the instance |
+| F12 (promoted from §5.1/§6.2) | No scroll cue when the fold lands in a content gap | Part-3 review | partial reads teach answering unread questions | fade-out mask at the clipped edge of every card scroll region, shown only while content extends past the fold |
+| F13 (promoted from §5.4/§6.3) | Skipped cards stayed answerable after the lapse — a second grade would corrupt FSRS and calibration | Part-3 review → ruled engine-correctness | grade path open after skip | skip-lapsed cards are READ-ONLY for grading: answer revealable for learning, no confidence, no grade, no second review event; state label explains; unit-tested (skip-then-answer = exactly one record, lapse, confidence null) |
 
 ## 3. Assertion run history
 
@@ -64,6 +67,46 @@ Additional defects the loop itself surfaced:
 | 3 | 309 | **0** | — (but F6 discovered in review: fixture cells were capturing the wrong state) |
 | 4 | 309 | **0** (fixtures actually loading, `--nobanner`/`empty-deck` cells now genuine) | — |
 | 5 | 309 | **0**, and **0 baseline drift** against the 20 round-4 baselines — verifying that the React-compiler ref fixes (state mirrors for shownAt/progress, query-measured action bar) changed no pixels | — |
+| 6 | 316 | 1 (check-4 false positive from the instrument's own flip-rect lookup under reduced motion — fixed) + 1 baseline diff (0.61%, intentional UI change) | instrument bug, not app bug |
+| 7 | 316 | **0** (incl. check 10 copy-audit and `empty-deck--banner`); all 20 baselines re-seeded — intentional visual change set (fade mask, arming fill, skip-lock UI, home copy) | — |
+
+**Pixel-identical is not behavior-identical.** Round 5's zero drift proved
+the ref fixes changed no pixels; it proved nothing about when `shownAt` is
+stamped — which gates the 2s arming and feeds median time-per-card. That
+behavior now lives in `lib/learning/session.ts` (a pure machine the Feed
+dispatches into, not a copy) and is unit-tested: shownAt stamps on
+becoming-active only, once, never on mount/render/flip/revisit; arming at
+exactly +2000ms from first shown; median over graded durations with skips
+excluded and revisits not restarting the clock; counters derived from the
+record log after scroll/skip/grade.
+
+**empty-deck--banner (finding 5.5 answered):** it was a FIXTURE limitation,
+not an unreachable state — a user who finishes everything without ever
+setting a date reaches it. The `alldone-nodate` fixture now exists and the
+cell is captured; the gap is closed rather than documented.
+
+Round 6 also surfaced one bug in the instrument itself: check 4 measured
+dead space from the FIRST `-scroll` element, which under reduced motion
+sits on a hidden face with a zero rect, fabricating 745px of "dead space".
+Fixed to measure from the visible clipped region's flip container. Round 7
+re-ran clean and re-seeded all 20 baselines — an intentional visual change
+set (fade mask, arming fill, skip-lock UI, home copy), noted in the commit
+message per the A11 baseline rule.
+
+Review lines for the states added in this round (each verified full-size at
+phone, spot-checked across the sheet set):
+- `feed-skipped-lapsed` (now skip-locked): red lock label reads first, the
+  only tappable element is the learn-only reveal; no confidence or grade
+  row can render; bar says "Lapse recorded". The eye lands on the lock
+  label before the card — correct, since the state change is the message.
+- `feed-empty-deck--banner`: banner over an all-zeros summary; "come back
+  tomorrow" is the primary read. Honest empty state, no fake cheer.
+- Arming fill: under capture CSS (zero animation duration) it renders as a
+  full-width dim — live it sweeps left-to-right over 2s. The wait now
+  explains itself; the delay is unchanged.
+- Fade mask: visible exactly where content clips (worst-case backs), absent
+  on short cards — matches finding 1's requirement that the cue appear
+  before the reader needs it.
 
 Contrast (check 8, report-only until Phase 5 brand colors): 295 cells carry
 findings, dominated by `text-neutral-500` on the dark surface (≈4.0:1 vs

@@ -43,6 +43,26 @@ body {
   position: sticky;
   bottom: 0;
 }
+
+/* 2s reveal-arming made legible (A11 review): a fill completes over the
+ * delay. The delay is the mechanism — the fill only explains it. */
+@keyframes rapids-arm {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
+}
+.rapids-arm-fill {
+  animation: rapids-arm 2s linear forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rapids-arm-fill {
+    animation: none;
+    width: 100%;
+  }
+}
 @media (max-height: 480px) {
   .feed-slot-pad {
     padding-bottom: 8px;

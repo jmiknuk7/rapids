@@ -177,3 +177,24 @@ Constraints: never rewrite exam content wording to satisfy structure or
 lint — content fidelity outranks documentation structure everywhere they
 conflict; no tutorial content invented to fill the quadrant; Diátaxis
 governs prose, not code or route structure.
+
+---
+
+# A12 — Desktop column widening (Jake, A11 review rulings; Phase 5)
+
+On wide-short viewports the phone-column Feed wastes horizontal space while
+vertical space is scarce; fewer wrapped lines directly buys back the height
+that was clipping content. Widen the content column when the viewport is
+wide and short. Layout change with brand implications → belongs to the
+Phase 5 visual work, not a defect pass. The empty-card-bodies-on-short-
+answers cosmetic finding is expected to be resolved by the same change —
+do not solve it twice.
+
+Also ruled in the same review (implemented immediately, recorded here for
+the trail): D5 fixed (home page build-status copy) + copy-audit assertion
+(check 10) added to pnpm shots; fade-out scroll mask on clipped card
+regions; 2s arming shows a progress fill (delay unchanged); skip-lapsed
+cards are read-only for grading (revealable for learning, exactly one
+review event, unit-tested); behavioral unit tests for shownAt/arming/
+median/counters in lib/learning/session.ts — pixel-identical is not
+behavior-identical.

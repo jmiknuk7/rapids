@@ -100,6 +100,18 @@ function buildFixtures() {
       ],
       events: [],
     },
+    // A11 review, finding 5: all-done WITHOUT an exam date. Reachable in the
+    // app (study everything, never set a date); the earlier fixture bundled
+    // a date only because it was built that way — a fixture limitation, now
+    // closed rather than documented.
+    "alldone-nodate": {
+      settings: baseSettings,
+      progress: [
+        ...ccaf.cards.map((c) => settled(c.id, c.domainId, +5)),
+        ...ccaf.questions.map((q) => settled(q.id, q.domainId, +5)),
+      ],
+      events: [],
+    },
   };
   mkdirSync(FIXTURES, { recursive: true });
   for (const [name, fx] of Object.entries(fixtures))
@@ -209,6 +221,7 @@ function buildCells(): Cell[] {
     cells.push({ name: `feed-${s.n}--nobanner`, route: feedUrl(s.pin), fixture: "dateset", actions: s.a, feed: true });
   }
   cells.push({ name: "feed-empty-deck--nobanner", route: feedUrl(), fixture: "alldone", actions: [], feed: true });
+  cells.push({ name: "feed-empty-deck--banner", route: feedUrl(), fixture: "alldone-nodate", actions: [], feed: true });
   cells.push({ name: "feed-snowpro-front--banner", route: feedUrl(PIN.snowproRecall, snowpro.manifest.slug), fixture: "fresh", actions: [], feed: true });
   return cells;
 }
