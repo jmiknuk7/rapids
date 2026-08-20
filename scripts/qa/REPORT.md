@@ -1,5 +1,38 @@
 # A11 Visual QA Report — Phase 3
 
+## Device pass (emulated legs, 2026-08-20)
+
+Executed by `scripts/qa/device-pass.ts` against production: Chromium +
+Pixel 7 descriptor and WebKit + iPhone 14 descriptor (the Safari engine),
+real timers, one persistent profile per leg. **Final run: 76 rows, 0 F**
+(full row detail in the driver output; hardware-only rows are N-A, never a
+faked P). The pass caught and fixed, across its three runs:
+
+1. **C7 spec bug (engine):** the reducer lapsed ANY ungraded card scrolled
+   past; spec says "without attempting". Attempted cards now keep state and
+   stay gradable on return (unit-tested, commit 7dc6bd9).
+2. **Safari-blocking tap interception (app, WebKit leg):** WebKit hit-tests
+   `backface-visibility:hidden` rotated faces — the invisible back face
+   blocked every tap on the Safari engine. Hidden faces now get
+   `pointer-events-none` (commit 2623d11). This alone justified the WebKit
+   leg: Chromium can never see it.
+3. Harness fixes: C6 target actually clips; D6 excludes the learn-only
+   reveal button; B1/B2/B6 distinguish undelivered emulated gestures (N-A)
+   from snap failures (F); F3 relaunch timeout.
+
+Still requires real hardware: flick/drag physics feel (B1/B2/B6), address-
+bar collapse (B5), iOS rubber-band containment (B3 — this WebKit build does
+not support overscroll-behavior; if real iOS Safari matches, a touch-action
+fallback may be needed), one-handed feel (D1), mis-tap rate (D4), VoiceOver/
+TalkBack (G2), Dynamic Type proper (G3), and E4 — whether 20 cards feel
+like work is a human datum by design.
+
+H2 finding: SnowPro's 17 "trap" cards are warning-notes (mechanical
+front/back split of source callouts), not wrong-approach statements — the
+CCA-F traps carry the true inverted polarity. Content is correct; the TYPE
+contract differs. Options if it matters: retype SnowPro's as reference
+warnings, or leave labeled as-is. Jake decides.
+
 Sweep of 2026-08-19, run by `pnpm shots` (seed 7, clock frozen at
 2026-09-05T12:00Z, fixtures preloaded, animations disabled; separate
 reduced-motion pass). This file is regenerated each phase; per-run raw data

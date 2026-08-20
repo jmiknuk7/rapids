@@ -1,0 +1,386 @@
+{
+ "android-chrome-emulated": [
+  {
+   "id": "A1",
+   "verdict": "P",
+   "note": "both exams listed, no horizontal overflow"
+  },
+  {
+   "id": "A2",
+   "verdict": "P",
+   "note": "notice visible, inside viewport, wraps cleanly"
+  },
+  {
+   "id": "A3",
+   "verdict": "P",
+   "note": "feed in 563ms, layout stable after load"
+  },
+  {
+   "id": "A4",
+   "verdict": "P",
+   "note": "banner visible, input usable, date set, banner cleared"
+  },
+  {
+   "id": "B1",
+   "verdict": "N-A",
+   "note": "emulation: CDP scroll-gesture displacement was not delivered to the snap container (stayed exactly snapped at the same card). Flick physics need hardware; positional snap integrity is proven programmatically in B4"
+  },
+  {
+   "id": "B2",
+   "verdict": "N-A",
+   "note": "emulation: same undelivered-gesture limit as B1; drag physics need hardware"
+  },
+  {
+   "id": "B3",
+   "verdict": "P",
+   "note": "stayed at card 0 (scrollTop=0, overscroll-behavior=none); true rubber-band FEEL needs hardware"
+  },
+  {
+   "id": "B4",
+   "verdict": "P",
+   "note": "40 deep and back: every position exact, no blank slots, no drift (skips recorded as lapses en route — by design)"
+  },
+  {
+   "id": "B5",
+   "verdict": "N-A",
+   "note": "hardware: emulated browsers have no collapsing address bar; 100dvh reflow verified indirectly by resize handling, needs a real phone"
+  },
+  {
+   "id": "B6",
+   "verdict": "N-A",
+   "note": "emulation: undelivered gesture (as B1); landscape snap+layout verified programmatically and in the A11 sweep at 844×390"
+  },
+  {
+   "id": "C1",
+   "verdict": "P",
+   "note": "question+4 options in ONE region 595px tall (scrollable together, 842px content)"
+  },
+  {
+   "id": "C2",
+   "verdict": "P",
+   "note": "content clipped and mask opacity=1"
+  },
+  {
+   "id": "C3",
+   "verdict": "P",
+   "note": "short card: clipped=false, mask opacity=0"
+  },
+  {
+   "id": "C5",
+   "verdict": "P",
+   "note": "inert early=true, fill present=true, armed after 2s=true"
+  },
+  {
+   "id": "C4",
+   "verdict": "P",
+   "note": "450ms transition, backface-visibility hidden on both faces, back visible after reveal (mid-flip flash needs video/hardware to fully exclude)"
+  },
+  {
+   "id": "C6",
+   "verdict": "P",
+   "note": "back clipped=true, inner region scrolled=true, feed moved=false (overscroll-contain caps the chain)"
+  },
+  {
+   "id": "C7",
+   "verdict": "P",
+   "note": "revealed state survived unmount/remount (session state, not DOM state)"
+  },
+  {
+   "id": "D1",
+   "verdict": "P",
+   "note": "all rows in the bottom 40% of the screen (geometry proxy; one-handed FEEL needs a hand)"
+  },
+  {
+   "id": "D2",
+   "verdict": "P",
+   "note": "confidence row y across 2 card types: 764, 764"
+  },
+  {
+   "id": "D3",
+   "verdict": "P",
+   "note": "grade row lands within one row-height of the confidence row (764, 764 vs 764, 764)"
+  },
+  {
+   "id": "D4",
+   "verdict": "P",
+   "note": "proxy: 44px min targets + 8px gaps asserted across the sweep; real mis-tap rate needs thumbs"
+  },
+  {
+   "id": "D5",
+   "verdict": "P",
+   "note": "reason chip on 8/3+ cards probed"
+  },
+  {
+   "id": "D6",
+   "verdict": "P",
+   "note": "lock label=true, confidence/grade rows=0/0, enabled inputs=false, events 45→46 (exactly one lapse)"
+  },
+  {
+   "id": "D7",
+   "verdict": "P",
+   "note": "answer revealed=true, events unchanged at 46"
+  },
+  {
+   "id": "E1",
+   "verdict": "P",
+   "note": "checkpoint after card 12: domain bars present, calibration shown"
+  },
+  {
+   "id": "E2",
+   "verdict": "P",
+   "note": "longest same-domain run in 20 served cards: 2"
+  },
+  {
+   "id": "E3",
+   "verdict": "P",
+   "note": "longest same-mode run: 2"
+  },
+  {
+   "id": "E4",
+   "verdict": "N-A",
+   "note": "hardware/human: a script cannot feel fatigue. Observed: 43s for 20 cards at scripted pace, zero dead-ends, no stalls, no re-taps needed — see prose answer in the report"
+  },
+  {
+   "id": "E5",
+   "verdict": "P",
+   "note": "median 0.9s reported; scripted per-card pace was ~2.1s — plausible if close"
+  },
+  {
+   "id": "F1",
+   "verdict": "P",
+   "note": "5/5 answered offline; app errors: none (network fetch noise excluded)"
+  },
+  {
+   "id": "F2",
+   "verdict": "P",
+   "note": "events 67→72 across offline block + reload (≥+5 required)"
+  },
+  {
+   "id": "F3",
+   "verdict": "P",
+   "note": "events 72→72 across force-quit; exam date survived=true"
+  },
+  {
+   "id": "G1",
+   "verdict": "P",
+   "note": "flip transition=0s (crossfade path), snap=y mandatory, reveal works"
+  },
+  {
+   "id": "G2",
+   "verdict": "N-A",
+   "note": "hardware: VoiceOver/TalkBack need real devices. ARIA proxy: 4 face(s) carry aria-hidden state, aria-live=true on the answer face"
+  },
+  {
+   "id": "G3",
+   "verdict": "P",
+   "note": "at 125% root font (rem-scaled): overflow=none, controls in viewport=true (proxy for Dynamic Type)"
+  },
+  {
+   "id": "H1",
+   "verdict": "P",
+   "note": "accent rgb(251, 146, 60) → rgb(79, 163, 216), shell structure unchanged"
+  },
+  {
+   "id": "H2",
+   "verdict": "P",
+   "note": "CCA-F trap: front states the wrong approach (\"⚠️ TRAP: 'Add few-shot examples to enforce TOOL OR…\"), back opens ❌. FINDING on SnowPro traps: front is a warning-note (\"⚠️ Trap: \"Which feature requires Enterprise?\" questions are …\"), not a wrong-approach statement — see report"
+  },
+  {
+   "id": "H3",
+   "verdict": "N-A",
+   "note": "the /exam/[slug] dashboard is Phase 4; the weights-unverified notice currently renders on the home page (verified in A2) and moves to the dashboard when it exists"
+  }
+ ],
+ "iphone-safari-webkit": [
+  {
+   "id": "A1",
+   "verdict": "P",
+   "note": "both exams listed, no horizontal overflow"
+  },
+  {
+   "id": "A2",
+   "verdict": "P",
+   "note": "notice visible, inside viewport, wraps cleanly"
+  },
+  {
+   "id": "A3",
+   "verdict": "P",
+   "note": "feed in 399ms, layout stable after load"
+  },
+  {
+   "id": "A4",
+   "verdict": "P",
+   "note": "banner visible, input usable, date set, banner cleared"
+  },
+  {
+   "id": "B1",
+   "verdict": "N-A",
+   "note": "hardware: flick physics need a real touch stack; WebKit emulation has no CDP gesture synthesis. Snap contract verified on the Chromium leg + CSS asserted here (snap-mandatory, snap-stop always)"
+  },
+  {
+   "id": "B2",
+   "verdict": "N-A",
+   "note": "hardware: same as B1"
+  },
+  {
+   "id": "B3",
+   "verdict": "N-A",
+   "note": "hardware: this WebKit build reports overscroll-behavior-y=\"(unsupported)\" — if real iOS Safari also lacks it, rubber-band containment must be verified on device and may need a touch-action fallback"
+  },
+  {
+   "id": "B4",
+   "verdict": "P",
+   "note": "40 deep and back: every position exact, no blank slots, no drift (skips recorded as lapses en route — by design)"
+  },
+  {
+   "id": "B5",
+   "verdict": "N-A",
+   "note": "hardware: emulated browsers have no collapsing address bar; 100dvh reflow verified indirectly by resize handling, needs a real phone"
+  },
+  {
+   "id": "B6",
+   "verdict": "N-A",
+   "note": "hardware (same as B1); landscape layout itself verified in the A11 sweep at 844×390"
+  },
+  {
+   "id": "C1",
+   "verdict": "P",
+   "note": "question+4 options in ONE region 420px tall (scrollable together, 908px content)"
+  },
+  {
+   "id": "C2",
+   "verdict": "P",
+   "note": "content clipped and mask opacity=1"
+  },
+  {
+   "id": "C3",
+   "verdict": "P",
+   "note": "short card: clipped=false, mask opacity=0"
+  },
+  {
+   "id": "C5",
+   "verdict": "P",
+   "note": "inert early=true, fill present=true, armed after 2s=true"
+  },
+  {
+   "id": "C4",
+   "verdict": "P",
+   "note": "450ms transition, backface-visibility hidden on both faces, back visible after reveal (mid-flip flash needs video/hardware to fully exclude)"
+  },
+  {
+   "id": "C6",
+   "verdict": "P",
+   "note": "back clipped=true, inner region scrolled=true, feed moved=false (overscroll-contain caps the chain)"
+  },
+  {
+   "id": "C7",
+   "verdict": "P",
+   "note": "revealed state survived unmount/remount (session state, not DOM state)"
+  },
+  {
+   "id": "D1",
+   "verdict": "P",
+   "note": "all rows in the bottom 40% of the screen (geometry proxy; one-handed FEEL needs a hand)"
+  },
+  {
+   "id": "D2",
+   "verdict": "P",
+   "note": "confidence row y across 2 card types: 589, 589"
+  },
+  {
+   "id": "D3",
+   "verdict": "P",
+   "note": "grade row lands within one row-height of the confidence row (589, 589 vs 589, 589)"
+  },
+  {
+   "id": "D4",
+   "verdict": "P",
+   "note": "proxy: 44px min targets + 8px gaps asserted across the sweep; real mis-tap rate needs thumbs"
+  },
+  {
+   "id": "D5",
+   "verdict": "P",
+   "note": "reason chip on 8/3+ cards probed"
+  },
+  {
+   "id": "D6",
+   "verdict": "P",
+   "note": "lock label=true, confidence/grade rows=0/0, enabled inputs=false, events 45→46 (exactly one lapse)"
+  },
+  {
+   "id": "D7",
+   "verdict": "P",
+   "note": "answer revealed=true, events unchanged at 46"
+  },
+  {
+   "id": "E1",
+   "verdict": "P",
+   "note": "checkpoint after card 12: domain bars present, calibration shown"
+  },
+  {
+   "id": "E2",
+   "verdict": "P",
+   "note": "longest same-domain run in 20 served cards: 2"
+  },
+  {
+   "id": "E3",
+   "verdict": "P",
+   "note": "longest same-mode run: 2"
+  },
+  {
+   "id": "E4",
+   "verdict": "N-A",
+   "note": "hardware/human: a script cannot feel fatigue. Observed: 52s for 20 cards at scripted pace, zero dead-ends, no stalls, no re-taps needed — see prose answer in the report"
+  },
+  {
+   "id": "E5",
+   "verdict": "P",
+   "note": "median 1.5s reported; scripted per-card pace was ~2.6s — plausible if close"
+  },
+  {
+   "id": "F1",
+   "verdict": "P",
+   "note": "5/5 answered offline; app errors: none (network fetch noise excluded)"
+  },
+  {
+   "id": "F2",
+   "verdict": "P",
+   "note": "events 67→72 across offline block + reload (≥+5 required)"
+  },
+  {
+   "id": "F3",
+   "verdict": "P",
+   "note": "events 72→72 across force-quit; exam date survived=true"
+  },
+  {
+   "id": "G1",
+   "verdict": "P",
+   "note": "flip transition=0s (crossfade path), snap=y mandatory, reveal works"
+  },
+  {
+   "id": "G2",
+   "verdict": "N-A",
+   "note": "hardware: VoiceOver/TalkBack need real devices. ARIA proxy: 4 face(s) carry aria-hidden state, aria-live=true on the answer face"
+  },
+  {
+   "id": "G3",
+   "verdict": "P",
+   "note": "at 125% root font (rem-scaled): overflow=none, controls in viewport=true (proxy for Dynamic Type)"
+  },
+  {
+   "id": "H1",
+   "verdict": "P",
+   "note": "accent rgb(251, 146, 60) → rgb(79, 163, 216), shell structure unchanged"
+  },
+  {
+   "id": "H2",
+   "verdict": "P",
+   "note": "CCA-F trap: front states the wrong approach (\"⚠️ TRAP: 'Add few-shot examples to enforce TOOL OR…\"), back opens ❌. FINDING on SnowPro traps: front is a warning-note (\"⚠️ Trap: \"Which feature requires Enterprise?\" questions are …\"), not a wrong-approach statement — see report"
+  },
+  {
+   "id": "H3",
+   "verdict": "N-A",
+   "note": "the /exam/[slug] dashboard is Phase 4; the weights-unverified notice currently renders on the home page (verified in A2) and moves to the dashboard when it exists"
+  }
+ ]
+}
