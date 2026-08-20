@@ -1,0 +1,15 @@
+{
+ "settings": {
+  "exams": {
+   "cca-f": {
+    "examDate": "2026-10-15",
+    "examDateSetAt": "2026-09-01"
+   }
+  },
+  "dailyReviewTarget": 40,
+  "retentionTarget": 0.9,
+  "reducedMotion": false
+ },
+ "progress": [],
+ "events": []
+}

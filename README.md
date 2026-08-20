@@ -31,7 +31,8 @@ Exams are **data, not code** — see `content/README.md` for how to add one
 pnpm install
 pnpm validate:content   # Zod + cross-field validation, fails the Vercel build
 pnpm test               # content parity + integrity + engine tests (vitest)
-pnpm gate               # validate + tests + full build + lint, one command
+pnpm shots              # A11 visual QA: capture matrix + DOM assertions + baseline diff
+pnpm gate               # validate + tests + full build + lint + shots, one command
 pnpm dev
 ```
 

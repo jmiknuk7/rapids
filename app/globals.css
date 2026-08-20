@@ -24,3 +24,33 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/*
+ * Feed slot padding (A11): chrome heights are measured into --hud-h/--bar-h.
+ * At short viewports (landscape phones) three stacked bars cannot leave a
+ * ≥200px card region, so the card SCROLL REGION extends under the fixed
+ * action bar instead — its own bottom padding keeps content reachable above
+ * the bar. Normal viewports pad the slot past the bar.
+ */
+.feed-slot-pad {
+  padding-top: calc(var(--hud-h, 96px) + 4px);
+  padding-bottom: calc(var(--bar-h, 132px) + 8px);
+}
+.feed-scroll-pad {
+  padding-bottom: 4px;
+}
+.feed-attempt-sticky {
+  position: sticky;
+  bottom: 0;
+}
+@media (max-height: 480px) {
+  .feed-slot-pad {
+    padding-bottom: 8px;
+  }
+  .feed-scroll-pad {
+    padding-bottom: calc(var(--bar-h, 96px) + 8px);
+  }
+  .feed-attempt-sticky {
+    bottom: calc(var(--bar-h, 96px));
+  }
+}

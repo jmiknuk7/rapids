@@ -12,23 +12,23 @@ export default async function DumpPage({ params }: PageProps<"/dump/[slug]">) {
   if (!exam) notFound();
 
   return (
-    <main className="mx-auto max-w-4xl p-8 font-mono text-xs">
+    <main className="mx-auto min-w-0 max-w-4xl p-8 font-mono text-xs [overflow-wrap:anywhere]">
       <h1 className="text-xl font-bold">{exam.manifest.name} — raw content</h1>
 
       <h2 className="mt-6 text-lg font-bold">manifest</h2>
-      <pre className="whitespace-pre-wrap rounded bg-neutral-100 p-3">
+      <pre className="whitespace-pre-wrap rounded bg-neutral-100 p-3 text-neutral-900">
         {JSON.stringify(exam.manifest, null, 2)}
       </pre>
 
       <h2 className="mt-6 text-lg font-bold">sources ({exam.sources.length})</h2>
-      <pre className="whitespace-pre-wrap rounded bg-neutral-100 p-3">
+      <pre className="whitespace-pre-wrap rounded bg-neutral-100 p-3 text-neutral-900">
         {JSON.stringify(exam.sources, null, 2)}
       </pre>
 
       <h2 className="mt-6 text-lg font-bold">sections ({exam.sections.length})</h2>
       {exam.sections.map((s) => (
         <details key={s.id} className="mt-2 rounded border border-neutral-300 p-2">
-          <summary>
+          <summary className="flex min-h-11 cursor-pointer items-center gap-1">
             [{s.id}] {s.title} {s.unverifiedClaims?.length ? "⚠ unverified claims" : ""}
           </summary>
           <pre className="mt-2 whitespace-pre-wrap">{s.body}</pre>
@@ -50,7 +50,7 @@ export default async function DumpPage({ params }: PageProps<"/dump/[slug]">) {
       <h2 className="mt-6 text-lg font-bold">cards ({exam.cards.length})</h2>
       {exam.cards.map((c) => (
         <details key={c.id} className="mt-2 rounded border border-neutral-300 p-2">
-          <summary>
+          <summary className="flex min-h-11 cursor-pointer items-center gap-1">
             [{c.id}] ({c.type}) {c.front.slice(0, 110)}
           </summary>
           <pre className="mt-2 whitespace-pre-wrap">{c.back}</pre>
@@ -63,7 +63,7 @@ export default async function DumpPage({ params }: PageProps<"/dump/[slug]">) {
       <h2 className="mt-6 text-lg font-bold">questions ({exam.questions.length})</h2>
       {exam.questions.map((q) => (
         <details key={q.id} className="mt-2 rounded border border-neutral-300 p-2">
-          <summary>
+          <summary className="flex min-h-11 cursor-pointer items-center gap-1">
             [{q.id}] {q.official ? "★OFFICIAL " : ""}
             {!q.distractorRationale ? "⚠incomplete-rationale " : ""}
             {q.question.slice(0, 110)}

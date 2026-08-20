@@ -13,6 +13,16 @@
  * - fixed-height slots for every queue position: scrollHeight never changes,
  *   so scroll-snap and virtualization cannot fight (render window ±2)
  * - median time-per-card instrumented and reported in the session summary
+ *
+ * Layout contract (A11, after the Phase 3 visual defects):
+ * - HUD and action-bar heights are MEASURED into CSS variables (--hud-h,
+ *   --bar-h); slots pad by measurement, never by fixed guesses — the
+ *   no-exam-date banner changing the height budget is what broke Phase 3.
+ * - Each card face is ONE scroll region (question + options together), so
+ *   options can never collapse into a separate porthole.
+ * - QA hooks: ?qaseed= seeds the queue RNG (or NEXT_PUBLIC_QA_SEED),
+ *   ?qafirst=<id> pins an item to the queue front, data-qa attributes mark
+ *   the geometry the assertion script measures.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -148,12 +158,26 @@ export default function FeedClient({ slug }: { slug: string }) {
   );
 
   const progressRef = useRef<Map<string, CardProgress>>(new Map());
+  /** Render-safe snapshot of progress (refs must not be read during render). */
+  const [progressSnapshot, setProgressSnapshot] = useState<Map<string, CardProgress>>(new Map());
   const containerRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const startedAtRef = useRef(0);
   const summarySavedRef = useRef(false);
   const skipRecordedRef = useRef<Set<number>>(new Set());
-  /** First-shown timestamps per slot index (event-time, not render-time). */
-  const shownAtRef = useRef<Map<number, number>>(new Map());
+  /**
+   * First-shown timestamps per slot index. State drives render (the ref must
+   * never be read during render — React compiler rule); the ref mirror gives
+   * scroll/keyboard handlers a synchronous view. Both are written only from
+   * event/init contexts via markShown.
+   */
+  const [shownAtMap, setShownAtMap] = useState<Record<number, number>>({});
+  const shownAtRef = useRef<Record<number, number>>({});
+  const markShown = useCallback((idx: number) => {
+    if (shownAtRef.current[idx]) return;
+    shownAtRef.current = { ...shownAtRef.current, [idx]: Date.now() };
+    setShownAtMap(shownAtRef.current);
+  }, []);
   const scheduler = useMemo(
     () => makeScheduler(settings?.retentionTarget ?? 0.9),
     [settings?.retentionTarget],
@@ -161,6 +185,40 @@ export default function FeedClient({ slug }: { slug: string }) {
 
   const examSettings = settings?.exams[exam.manifest.id];
   const examDate = examSettings?.examDate ?? null;
+
+  /* ---------- measured chrome heights → CSS vars (A11 defect 5) ---------- */
+  const measureInto = useCallback((cssVar: string) => {
+    let ro: ResizeObserver | null = null;
+    return (el: HTMLElement | null) => {
+      ro?.disconnect();
+      if (!el) return;
+      const apply = () =>
+        rootRef.current?.style.setProperty(cssVar, `${Math.ceil(el.getBoundingClientRect().height)}px`);
+      ro = new ResizeObserver(apply);
+      ro.observe(el);
+      apply();
+    };
+  }, []);
+  const measureHud = useMemo(() => measureInto("--hud-h"), [measureInto]);
+
+  /* The action bar is owned by the active ItemSlot, so the parent measures
+   * it by query instead of threading a callback ref through props (the
+   * React compiler cannot verify a props-passed ref isn't read in render). */
+  const [slotStatesVersion, setSlotStatesVersion] = useState(0);
+  useEffect(() => {
+    const el = document.querySelector('[data-qa="action-bar"]') as HTMLElement | null;
+    const root = rootRef.current;
+    if (!el) {
+      root?.style.setProperty("--bar-h", "16px");
+      return;
+    }
+    const apply = () =>
+      root?.style.setProperty("--bar-h", `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    apply();
+    return () => ro.disconnect();
+  }, [activeIdx, slotStatesVersion, loading]);
 
   /* ---------- init ---------- */
   useEffect(() => {
@@ -173,10 +231,15 @@ export default function FeedClient({ slug }: { slug: string }) {
       ]);
       if (cancelled) return;
       progressRef.current = progress;
+      setProgressSnapshot(new Map(progress));
       const now = Date.now();
       startedAtRef.current = now;
       const es = s.exams[exam.manifest.id];
-      const queue = buildQueue({
+      // A11 determinism: ?qaseed= (or NEXT_PUBLIC_QA_SEED) fixes the queue.
+      const params = new URLSearchParams(window.location.search);
+      const seedParam = params.get("qaseed") ?? process.env.NEXT_PUBLIC_QA_SEED;
+      const seed = seedParam ? Number(seedParam) : now % 2 ** 31;
+      let queue = buildQueue({
         exam,
         progress,
         blindSpots,
@@ -184,8 +247,28 @@ export default function FeedClient({ slug }: { slug: string }) {
         examDateSetAt: es?.examDateSetAt ?? null,
         sessionSize: s.dailyReviewTarget,
         now,
-        rng: mulberry32(now % 2 ** 31),
+        rng: mulberry32(seed),
       });
+      // A11 worst-case pinning: ?qafirst=<id> moves an item to the front.
+      const qaFirst = params.get("qafirst");
+      if (qaFirst) {
+        const hit = queue.find((i) => i.id === qaFirst);
+        if (hit) queue = [hit, ...queue.filter((i) => i.id !== qaFirst)];
+        else {
+          const fromCard = cardsById.get(qaFirst) ?? questionsById.get(qaFirst);
+          if (fromCard)
+            queue = [
+              {
+                id: qaFirst,
+                domainId: fromCard.domainId,
+                kind: cardsById.has(qaFirst) ? "card" : "question",
+                reason: "new",
+                mode: "reference",
+              },
+              ...queue,
+            ];
+        }
+      }
       const built: Slot[] = [];
       queue.forEach((item, i) => {
         built.push({ type: "item", item });
@@ -193,7 +276,7 @@ export default function FeedClient({ slug }: { slug: string }) {
           built.push({ type: "checkpoint", ordinal: (i + 1) / CHECKPOINT_EVERY });
       });
       built.push({ type: "summary" });
-      shownAtRef.current.set(0, Date.now());
+      markShown(0);
       setSettings(s);
       setSlots(built);
       setNowTick(Date.now());
@@ -202,7 +285,7 @@ export default function FeedClient({ slug }: { slug: string }) {
     return () => {
       cancelled = true;
     };
-  }, [exam]);
+  }, [exam, cardsById, questionsById, markShown]);
 
   /* ---------- visible slots under the domain filter ---------- */
   const visibleSlots = useMemo(() => {
@@ -226,7 +309,7 @@ export default function FeedClient({ slug }: { slug: string }) {
       const st = slotStates[idx] ?? {};
       // The ref guards against double-recording when several scroll events
       // land before React re-renders slotStates.
-      if (st.graded || st.skipped || !shownAtRef.current.has(idx) || skipRecordedRef.current.has(idx))
+      if (st.graded || st.skipped || !shownAtRef.current[idx] || skipRecordedRef.current.has(idx))
         return;
       skipRecordedRef.current.add(idx);
       setSlotStates((prev) => ({ ...prev, [idx]: { ...(prev[idx] ?? {}), skipped: true } }));
@@ -240,12 +323,12 @@ export default function FeedClient({ slug }: { slug: string }) {
     const el = containerRef.current;
     if (!el || !el.clientHeight) return;
     const idx = Math.round(el.scrollTop / el.clientHeight);
-    if (!shownAtRef.current.has(idx)) shownAtRef.current.set(idx, Date.now());
+    markShown(idx);
     setActiveIdx((prev) => {
       if (idx > prev) for (let i = prev; i < idx; i++) recordSkip(i);
       return idx;
     });
-  }, [recordSkip]);
+  }, [recordSkip, markShown]);
 
   /* ---------- core recording ---------- */
   function applyResult(
@@ -265,6 +348,7 @@ export default function FeedClient({ slug }: { slug: string }) {
     const due = new Date(now + clamped * DAY_MS);
     const next: CardProgress = { ...advanced, fsrs: { ...card, due } };
     progressRef.current.set(item.id, next);
+    setProgressSnapshot(new Map(progressRef.current));
     void saveProgress(next);
     void appendEvent({
       cardId: item.id,
@@ -312,8 +396,10 @@ export default function FeedClient({ slug }: { slug: string }) {
   }, []);
 
   /* ---------- per-slot interaction handlers ---------- */
-  const setSlot = (idx: number, patch: Partial<SlotState>) =>
+  const setSlot = (idx: number, patch: Partial<SlotState>) => {
     setSlotStates((prev) => ({ ...prev, [idx]: { ...(prev[idx] ?? {}), ...patch } }));
+    setSlotStatesVersion((v) => v + 1); // re-measure the action bar (its height changes per state)
+  };
 
   function onAttempt(idx: number, mcPick?: number) {
     const st = slotStates[idx] ?? {};
@@ -333,7 +419,7 @@ export default function FeedClient({ slug }: { slug: string }) {
     const now = Date.now();
     const q = item.kind === "question" ? questionsById.get(item.id) : undefined;
     const correct = q ? st.attempted?.mcPick === q.correctIndex : grade !== "again";
-    const shownAt = shownAtRef.current.get(idx);
+    const shownAt = shownAtRef.current[idx];
     const durationMs = shownAt ? now - shownAt : 0;
     setSlot(idx, { graded: true, correct, durationMs });
     setStats((s) => ({ ...s, times: [...s.times, durationMs] }));
@@ -363,7 +449,7 @@ export default function FeedClient({ slug }: { slug: string }) {
       const isQuestion = item.kind === "question";
       if (e.key === " " && !isQuestion && !st.attempted) {
         e.preventDefault();
-        const shownAt = shownAtRef.current.get(idx);
+        const shownAt = shownAtRef.current[idx];
         if (shownAt && Date.now() - shownAt >= REVEAL_ARM_MS) onAttempt(idx);
         return;
       }
@@ -449,10 +535,14 @@ export default function FeedClient({ slug }: { slug: string }) {
         };
 
   return (
-    <div className="bg-[#0B1017] text-neutral-100">
-      {/* ── fixed HUD ── */}
-      <div className="pointer-events-none fixed inset-x-0 top-0 z-40 bg-gradient-to-b from-[#0B1017] via-[#0B1017]/90 to-transparent pb-6">
-        <div className="pointer-events-auto flex items-center gap-3 px-4 pt-3 text-xs">
+    <div ref={rootRef} className="bg-[#0B1017] text-neutral-100">
+      {/* ── fixed HUD (measured into --hud-h) ── */}
+      <div
+        ref={measureHud}
+        data-qa="hud"
+        className="pointer-events-none fixed inset-x-0 top-0 z-40 bg-gradient-to-b from-[#0B1017] via-[#0B1017]/95 to-[#0B1017]/60 pb-2"
+      >
+        <div className="pointer-events-auto flex min-h-11 items-center gap-3 px-4 pt-2 text-xs">
           <span className="font-bold" style={{ color: accent }}>
             {exam.manifest.shortName}
           </span>
@@ -467,17 +557,17 @@ export default function FeedClient({ slug }: { slug: string }) {
               <Link
                 key={e.manifest.id}
                 href={`/exam/${e.manifest.slug}/feed`}
-                className="rounded-full border border-neutral-700 px-2 py-1 text-neutral-400"
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-full border border-neutral-700 px-3 text-neutral-400"
               >
                 → {e.manifest.shortName}
               </Link>
             ))}
           </div>
         </div>
-        <div className="pointer-events-auto mt-2 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none]">
+        <div className="pointer-events-auto mt-1 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] [@media(max-height:480px)]:hidden">
           <button
             onClick={() => setDomainFilter(null)}
-            className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] ${!domainFilter ? "border-neutral-400 text-neutral-100" : "border-neutral-700 text-neutral-500"}`}
+            className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border px-3 text-[11px] ${!domainFilter ? "border-neutral-400 text-neutral-100" : "border-neutral-700 text-neutral-500"}`}
           >
             All
           </button>
@@ -485,7 +575,7 @@ export default function FeedClient({ slug }: { slug: string }) {
             <button
               key={d.id}
               onClick={() => setDomainFilter(domainFilter === d.id ? null : d.id)}
-              className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] ${domainFilter === d.id ? "text-white" : "border-neutral-700 text-neutral-500"}`}
+              className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border px-3 text-[11px] ${domainFilter === d.id ? "text-white" : "border-neutral-700 text-neutral-500"}`}
               style={domainFilter === d.id ? { backgroundColor: d.color, borderColor: d.color } : {}}
             >
               {d.short}
@@ -493,24 +583,28 @@ export default function FeedClient({ slug }: { slug: string }) {
           ))}
         </div>
         {examDate === null && (
-          <div className="pointer-events-auto mx-4 mt-2 flex items-center gap-2 rounded-lg border border-amber-600/50 bg-amber-950/70 px-3 py-2 text-[11px] text-amber-200">
-            <span className="min-w-0 flex-1">
-              ⚠ No exam date set — deadline scheduling is INACTIVE. You are studying on an
-              infinite horizon.
+          <div
+            data-qa="no-exam-date-banner"
+            className="pointer-events-auto mx-4 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-amber-600/50 bg-amber-950/80 px-3 py-1.5 text-[11px] text-amber-200"
+          >
+            <span className="min-w-0 flex-1 basis-52">
+              ⚠ No exam date set — deadline scheduling is INACTIVE.
             </span>
-            <input
-              type="date"
-              value={dateDraft}
-              onChange={(e) => setDateDraft(e.target.value)}
-              className="rounded border border-amber-700 bg-transparent px-1 py-0.5 text-amber-100"
-              aria-label="Exam date"
-            />
-            <button
-              onClick={() => void saveExamDate()}
-              className="rounded bg-amber-600 px-2 py-1 font-bold text-black"
-            >
-              Set
-            </button>
+            <span className="flex items-center gap-2">
+              <input
+                type="date"
+                value={dateDraft}
+                onChange={(e) => setDateDraft(e.target.value)}
+                className="h-11 w-40 max-w-full rounded border border-amber-700 bg-transparent px-2 text-amber-100"
+                aria-label="Exam date"
+              />
+              <button
+                onClick={() => void saveExamDate()}
+                className="h-11 rounded bg-amber-600 px-4 font-bold text-black"
+              >
+                Set
+              </button>
+            </span>
           </div>
         )}
       </div>
@@ -519,6 +613,7 @@ export default function FeedClient({ slug }: { slug: string }) {
       <div
         ref={containerRef}
         onScroll={onScroll}
+        data-qa="feed-scroll"
         className="h-dvh snap-y snap-mandatory overflow-y-scroll overscroll-none [scrollbar-width:none]"
       >
         {visibleSlots.map((slot, idx) => {
@@ -526,6 +621,8 @@ export default function FeedClient({ slug }: { slug: string }) {
           return (
             <section
               key={idx}
+              data-qa="slot"
+              data-slot-type={slot.type}
               className="h-dvh snap-start [scroll-snap-stop:always]"
               aria-hidden={idx !== activeIdx}
             >
@@ -537,13 +634,13 @@ export default function FeedClient({ slug }: { slug: string }) {
                   question={questionsById.get(slot.item.id)}
                   domainName={
                     slot.item.domainId
-                      ? (domainsById.get(slot.item.domainId)?.name ?? slot.item.domainId)
+                      ? (domainsById.get(slot.item.domainId)?.short ?? slot.item.domainId)
                       : "Cross-domain"
                   }
                   accent={accent}
                   st={slotStates[idx] ?? {}}
                   active={idx === activeIdx}
-                  shownAt={shownAtRef.current.get(idx)}
+                  shownAt={shownAtMap[idx]}
                   now={nowTick}
                   reducedMotion={reducedMotion}
                   flipStyle={flipStyle}
@@ -553,7 +650,7 @@ export default function FeedClient({ slug }: { slug: string }) {
                 />
               )}
               {inWindow && slot.type === "checkpoint" && (
-                <CheckpointSlot exam={exam} stats={stats} sessionGap={sessionGap} progress={progressRef.current} />
+                <CheckpointSlot exam={exam} stats={stats} sessionGap={sessionGap} progress={progressSnapshot} />
               )}
               {inWindow && slot.type === "summary" && (
                 <SummarySlot
@@ -596,23 +693,41 @@ function ItemSlot(props: {
   const isQuestion = item.kind === "question";
   const armed = !!props.shownAt && props.now - props.shownAt >= REVEAL_ARM_MS;
   const typeLabel = isQuestion ? TYPE_LABEL.question : TYPE_LABEL[card?.type ?? "recall"];
+  // A11 defect 4: never render two chips with identical text — the mode chip
+  // is skipped when it normalizes to the same words as the type chip.
+  const modeLabel =
+    item.mode.replace(/-/g, " ") === typeLabel ? null : item.mode.replace(/-/g, " ");
   const front = isQuestion ? question?.question : card?.front;
   const mcWrong = isQuestion && st.attempted?.mcPick !== question?.correctIndex;
+  const cardState = st.graded
+    ? "graded"
+    : st.revealed
+      ? "revealed"
+      : st.attempted
+        ? "attempted"
+        : "front";
 
   return (
-    <div className="mx-auto flex h-full max-w-xl flex-col px-4 pb-44 pt-32">
-      {/* meta row */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wider">
+    <div
+      data-qa="item"
+      data-kind={isQuestion ? "question" : card?.type}
+      data-card-state={cardState}
+      className="feed-slot-pad mx-auto flex h-full max-w-xl flex-col px-4"
+    >
+      {/* meta row (hidden at short heights to preserve the card region) */}
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wider [@media(max-height:480px)]:hidden">
         <span className="text-neutral-500">{domainName}</span>
         <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-neutral-400">
           {typeLabel}
         </span>
-        <span
-          className="rounded-full border border-neutral-800 px-2 py-0.5 text-neutral-500"
-          title="Diátaxis mode (A10)"
-        >
-          {item.mode}
-        </span>
+        {modeLabel && (
+          <span
+            className="rounded-full border border-neutral-800 px-2 py-0.5 text-neutral-500"
+            title="Diátaxis mode (A10)"
+          >
+            {modeLabel}
+          </span>
+        )}
         <span
           className={`rounded-full border px-2 py-0.5 ${REASON_STYLE[item.reason]}`}
           title="Why this card was selected"
@@ -625,52 +740,58 @@ function ItemSlot(props: {
       {/* flip container */}
       <div className="relative min-h-0 flex-1" style={{ perspective: 1400 }}>
         <div className="relative h-full w-full" style={props.flipStyle(revealed)}>
-          {/* FRONT */}
+          {/* FRONT — one scroll region for question + options (A11 defect 1) */}
           <div
-            className={`absolute inset-0 flex flex-col overflow-hidden rounded-2xl border border-neutral-800 bg-[#101722] p-5 ${props.reducedMotion ? (revealed ? "hidden" : "") : "[backface-visibility:hidden]"}`}
+            className={`absolute inset-0 flex flex-col overflow-hidden rounded-2xl border border-neutral-800 bg-[#101722] p-4 [@media(max-height:480px)]:p-3 ${props.reducedMotion ? (revealed ? "hidden" : "") : "[backface-visibility:hidden]"}`}
             aria-hidden={revealed}
           >
-            <p className="text-lg font-semibold leading-relaxed">{front}</p>
-            {isQuestion && question && (
-              <div className="mt-4 space-y-2 overflow-y-auto overscroll-contain">
-                {question.options.map((o, i) => (
-                  <button
-                    key={i}
-                    onClick={() => props.onAttempt(idx, i)}
-                    disabled={!!st.attempted}
-                    className={`w-full rounded-xl border p-3 text-left text-sm ${st.attempted?.mcPick === i ? "border-neutral-300 bg-neutral-800" : "border-neutral-700 bg-neutral-900/60"}`}
-                  >
-                    <span className="mr-2 font-bold text-neutral-500">
-                      {String.fromCharCode(65 + i)}
-                    </span>
-                    {o}
-                  </button>
-                ))}
-              </div>
-            )}
-            {!isQuestion && !st.attempted && (
-              <button
-                onClick={() => armed && props.onAttempt(idx)}
-                disabled={!armed || !active}
-                className="mt-auto w-full rounded-xl p-4 text-base font-bold text-black transition-opacity disabled:opacity-40"
-                style={{ backgroundColor: props.accent }}
-              >
-                {armed ? "I've recalled it — show answer" : "Recall it first…"}
-              </button>
-            )}
+            <div data-qa="card-front-scroll" className="feed-scroll-pad min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              <p className="text-base font-semibold leading-relaxed sm:text-lg">{front}</p>
+              {isQuestion && question && (
+                <div className="mt-4 space-y-2 pb-1">
+                  {question.options.map((o, i) => (
+                    <button
+                      key={i}
+                      onClick={() => props.onAttempt(idx, i)}
+                      disabled={!!st.attempted}
+                      className={`min-h-11 w-full rounded-xl border p-3 text-left text-sm ${st.attempted?.mcPick === i ? "border-neutral-300 bg-neutral-800" : "border-neutral-700 bg-neutral-900/60"}`}
+                    >
+                      <span className="mr-2 font-bold text-neutral-500">
+                        {String.fromCharCode(65 + i)}
+                      </span>
+                      {o}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!isQuestion && !st.attempted && (
+                <button
+                  data-qa="recall-attempt"
+                  onClick={() => armed && props.onAttempt(idx)}
+                  disabled={!armed || !active}
+                  className="feed-attempt-sticky mt-3 min-h-11 w-full rounded-xl bg-clip-padding p-3 text-base font-bold text-black transition-opacity disabled:opacity-40"
+                  style={{ backgroundColor: props.accent }}
+                >
+                  {armed ? "I've recalled it — show answer" : "Recall it first…"}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* BACK */}
           <div
-            className={`absolute inset-0 flex flex-col overflow-hidden rounded-2xl border p-5 ${props.reducedMotion ? (revealed ? "" : "hidden") : "[backface-visibility:hidden] [transform:rotateY(180deg)]"}`}
+            className={`absolute inset-0 flex flex-col overflow-hidden rounded-2xl border p-4 [@media(max-height:480px)]:p-3 ${props.reducedMotion ? (revealed ? "" : "hidden") : "[backface-visibility:hidden] [transform:rotateY(180deg)]"}`}
             style={{ borderColor: `${props.accent}55`, backgroundColor: "#0E1520" }}
             aria-hidden={!revealed}
             aria-live={active ? "polite" : undefined}
           >
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-widest" style={{ color: props.accent }}>
+            <div
+              className="mb-2 shrink-0 text-[10px] font-bold uppercase tracking-widest [@media(max-height:480px)]:mb-1"
+              style={{ color: props.accent }}
+            >
               Answer
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain text-sm leading-relaxed">
+            <div data-qa="card-back-scroll" className="feed-scroll-pad min-h-0 flex-1 overflow-y-auto overscroll-contain text-sm leading-relaxed">
               {isQuestion && question ? (
                 <div className="space-y-2">
                   {question.options.map((o, i) => {
@@ -706,13 +827,16 @@ function ItemSlot(props: {
         </div>
       </div>
 
-      {/* ── bottom action bar: confidence, then grades, same position ── */}
+      {/* ── bottom action bar (measured into --bar-h): confidence, then grades ── */}
       {active && !st.graded && (
-        <div className="fixed inset-x-0 bottom-0 z-30 bg-gradient-to-t from-[#0B1017] via-[#0B1017]/95 to-transparent px-4 pb-5 pt-8">
+        <div
+          data-qa="action-bar"
+          className="fixed inset-x-0 bottom-0 z-30 bg-gradient-to-t from-[#0B1017] via-[#0B1017]/95 to-transparent px-4 pb-3 pt-6 [@media(max-height:480px)]:pb-2 [@media(max-height:480px)]:pt-2"
+        >
           <div className="mx-auto max-w-xl">
             {st.attempted && !st.confidence && (
-              <div>
-                <div className="mb-1.5 text-center text-[10px] uppercase tracking-widest text-neutral-500">
+              <div data-qa="confidence-row">
+                <div className="mb-1 text-center text-[10px] uppercase tracking-widest text-neutral-500 [@media(max-height:480px)]:hidden">
                   How confident are you? (before the answer)
                 </div>
                 <div className="grid grid-cols-4 gap-2">
@@ -720,7 +844,7 @@ function ItemSlot(props: {
                     <button
                       key={c}
                       onClick={() => props.onConfidence(idx, c)}
-                      className="rounded-xl border border-neutral-700 bg-neutral-900 py-3.5 text-sm font-semibold capitalize"
+                      className="min-h-11 rounded-xl border border-neutral-700 bg-neutral-900 py-2.5 text-sm font-semibold capitalize"
                     >
                       <span className="mr-1 text-[10px] text-neutral-600">{i + 1}</span>
                       {c}
@@ -730,8 +854,8 @@ function ItemSlot(props: {
               </div>
             )}
             {st.revealed && !st.graded && (
-              <div>
-                <div className="mb-1.5 text-center text-[10px] uppercase tracking-widest text-neutral-500">
+              <div data-qa="grade-row">
+                <div className="mb-1 text-center text-[10px] uppercase tracking-widest text-neutral-500 [@media(max-height:480px)]:hidden">
                   {isQuestion
                     ? mcWrong
                       ? "Incorrect — grade is Again"
@@ -746,7 +870,7 @@ function ItemSlot(props: {
                         key={g}
                         onClick={() => props.onGrade(idx, item, g)}
                         disabled={disabled}
-                        className={`rounded-xl border py-3.5 text-sm font-semibold capitalize disabled:opacity-25 ${g === "again" ? "border-red-800 bg-red-950/60 text-red-300" : "border-neutral-700 bg-neutral-900"}`}
+                        className={`min-h-11 rounded-xl border py-2.5 text-sm font-semibold capitalize disabled:opacity-25 ${g === "again" ? "border-red-800 bg-red-950/60 text-red-300" : "border-neutral-700 bg-neutral-900"}`}
                       >
                         <span className="mr-1 text-[10px] text-neutral-600">{i + 1}</span>
                         {g}
@@ -757,7 +881,7 @@ function ItemSlot(props: {
               </div>
             )}
             {!st.attempted && (
-              <div className="text-center text-[11px] text-neutral-600">
+              <div className="py-1 text-center text-[11px] text-neutral-600">
                 {isQuestion ? "Pick an answer to continue" : "Attempt the recall first"} — skipping
                 counts as a lapse
               </div>
@@ -766,7 +890,7 @@ function ItemSlot(props: {
         </div>
       )}
       {active && st.graded && (
-        <div className="fixed inset-x-0 bottom-0 z-30 px-4 pb-5">
+        <div data-qa="action-bar" className="fixed inset-x-0 bottom-0 z-30 px-4 pb-4">
           <div className="mx-auto max-w-xl text-center text-xs text-neutral-500">
             {st.correct ? "✓ recorded" : "✗ recorded"} — swipe up for the next card ↑
           </div>
@@ -796,9 +920,13 @@ function CheckpointSlot(props: {
     });
   const acc = stats.answered ? Math.round((stats.correct / stats.answered) * 100) : 0;
   return (
-    <div className="mx-auto flex h-full max-w-xl flex-col justify-center px-6">
+    <div
+      data-qa="checkpoint"
+      className="mx-auto flex h-full max-w-xl flex-col justify-center overflow-y-auto px-6"
+      style={{ paddingTop: "var(--hud-h, 96px)", paddingBottom: "24px" }}
+    >
       <h2 className="text-xl font-bold">Checkpoint</h2>
-      <p className="mb-5 text-xs text-neutral-500">
+      <p className="mb-4 text-xs text-neutral-500">
         {stats.answered} answered · {acc}% accuracy
         {sessionGap !== null && ` · calibration gap ${(sessionGap * 100).toFixed(0)}pp`} · streak{" "}
         {stats.streak}. Not a reward screen — a mirror.
@@ -814,7 +942,7 @@ function CheckpointSlot(props: {
           </div>
         </div>
       ))}
-      <p className="mt-4 text-center text-xs text-neutral-600">swipe up to continue ↑</p>
+      <p className="mt-3 text-center text-xs text-neutral-600">swipe up to continue ↑</p>
     </div>
   );
 }
@@ -830,9 +958,13 @@ function SummarySlot(props: {
 }) {
   const { stats, sessionGap, weakestDomain, medianMs } = props;
   return (
-    <div className="mx-auto flex h-full max-w-xl flex-col justify-center px-6">
+    <div
+      data-qa="summary"
+      className="mx-auto flex h-full max-w-xl flex-col justify-center overflow-y-auto px-6"
+      style={{ paddingTop: "var(--hud-h, 96px)", paddingBottom: "24px" }}
+    >
       <h2 className="text-2xl font-bold">Session complete</h2>
-      <dl className="mt-6 space-y-3 text-sm">
+      <dl className="mt-5 space-y-3 text-sm">
         <div className="flex justify-between border-b border-neutral-800 pb-2">
           <dt className="text-neutral-400">Cards learned (state promotions)</dt>
           <dd className="font-bold">{stats.promotions}</dd>
@@ -856,13 +988,13 @@ function SummarySlot(props: {
           <dd className="font-bold">{weakestDomain ?? "—"}</dd>
         </div>
       </dl>
-      <p className="mt-6 text-sm text-neutral-300">
+      <p className="mt-5 text-sm text-neutral-300">
         Next action:{" "}
         {weakestDomain
           ? `drill ${weakestDomain} — it was your weakest this session.`
           : "come back tomorrow; criterion needs separate days."}
       </p>
-      <Link href="/" className="mt-8 text-center text-sm underline" style={{ color: "#7FB8DE" }}>
+      <Link href="/" className="mt-6 flex min-h-11 items-center justify-center text-center text-sm underline" style={{ color: "#7FB8DE" }}>
         Back to exams
       </Link>
     </div>
