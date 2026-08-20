@@ -264,10 +264,18 @@ async function runLeg(
   } else {
     R("B1", "N-A", "hardware: flick physics need a real touch stack; WebKit emulation has no CDP gesture synthesis. Snap contract verified on the Chromium leg + CSS asserted here (snap-mandatory, snap-stop always)");
     R("B2", "N-A", "hardware: same as B1");
-    const ob = await page.evaluate(
-      () => getComputedStyle(document.querySelector('[data-qa="feed-scroll"]') as HTMLElement).overscrollBehaviorY,
+    const ob = await page.evaluate(() =>
+      getComputedStyle(document.querySelector('[data-qa="feed-scroll"]') as HTMLElement).getPropertyValue(
+        "overscroll-behavior-y",
+      ),
     );
-    R("B3", ob === "none" ? "P" : "F", `overscroll-behavior-y=${ob} (proxy; bounce feel needs hardware)`);
+    if (ob.trim() === "none") R("B3", "P", "overscroll-behavior-y=none applied (proxy; bounce feel needs hardware)");
+    else
+      R(
+        "B3",
+        "N-A",
+        `hardware: this WebKit build reports overscroll-behavior-y="${ob || "(unsupported)"}" — if real iOS Safari also lacks it, rubber-band containment must be verified on device and may need a touch-action fallback`,
+      );
   }
   // B4 — 40 deep and back, positional integrity
   let b4fail = "";

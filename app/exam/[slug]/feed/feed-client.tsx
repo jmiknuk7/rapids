@@ -719,9 +719,12 @@ function ItemSlot(props: {
       {/* flip container */}
       <div className="relative min-h-0 flex-1" style={{ perspective: 1400 }}>
         <div className="relative h-full w-full" style={props.flipStyle(revealed)}>
-          {/* FRONT — one scroll region with fade mask */}
+          {/* FRONT — one scroll region with fade mask. The hidden face gets
+              pointer-events-none: WebKit hit-tests backface-hidden rotated
+              faces (Chromium does not), so without it the invisible face
+              blocks every tap on real iOS — caught by the WebKit pass leg. */}
           <div
-            className={`absolute inset-0 flex flex-col overflow-hidden rounded-2xl border border-neutral-800 bg-[#101722] p-4 [@media(max-height:480px)]:p-3 ${props.reducedMotion ? (revealed ? "hidden" : "") : "[backface-visibility:hidden]"}`}
+            className={`absolute inset-0 flex flex-col overflow-hidden rounded-2xl border border-neutral-800 bg-[#101722] p-4 [@media(max-height:480px)]:p-3 ${revealed ? "pointer-events-none " : ""}${props.reducedMotion ? (revealed ? "hidden" : "") : "[backface-visibility:hidden]"}`}
             aria-hidden={revealed}
           >
             <FadeScroll dataQa="card-front-scroll" fadeColor="#101722">
@@ -777,9 +780,9 @@ function ItemSlot(props: {
             </FadeScroll>
           </div>
 
-          {/* BACK */}
+          {/* BACK — pointer-events-none while hidden (see FRONT note) */}
           <div
-            className={`absolute inset-0 flex flex-col overflow-hidden rounded-2xl border p-4 [@media(max-height:480px)]:p-3 ${props.reducedMotion ? (revealed ? "" : "hidden") : "[backface-visibility:hidden] [transform:rotateY(180deg)]"}`}
+            className={`absolute inset-0 flex flex-col overflow-hidden rounded-2xl border p-4 [@media(max-height:480px)]:p-3 ${revealed ? "" : "pointer-events-none "}${props.reducedMotion ? (revealed ? "" : "hidden") : "[backface-visibility:hidden] [transform:rotateY(180deg)]"}`}
             style={{ borderColor: `${props.accent}55`, backgroundColor: "#0E1520" }}
             aria-hidden={!revealed}
             aria-live={active ? "polite" : undefined}
