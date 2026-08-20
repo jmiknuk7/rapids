@@ -75,12 +75,15 @@ export function reduceSession(s: FeedSession, a: FeedAction): FeedSession {
   switch (a.type) {
     case "activate": {
       let next = s;
-      // Scrolling forward past shown-but-ungraded slots records skip-lapses,
-      // exactly once each (state-guarded, not caller-guarded).
+      // Scrolling forward past a shown slot records a skip-lapse ONLY when
+      // the card was never attempted — the spec is "skipping a card WITHOUT
+      // ATTEMPTING counts as a lapse". An attempted card keeps its state
+      // (confidence, reveal) and can be graded on return; C7 of the device
+      // pass caught the over-application. Exactly-once is state-guarded.
       if (a.idx > s.activeIdx) {
         for (let i = s.activeIdx; i < a.idx; i++) {
           const st = slot(next, i);
-          if (next.shownAt[i] && !st.graded && !st.skipped) {
+          if (next.shownAt[i] && !st.graded && !st.skipped && !st.attempted) {
             next = withSlot(next, i, { skipped: true });
             next = {
               ...next,

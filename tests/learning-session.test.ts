@@ -121,6 +121,23 @@ describe("skip-lapse and read-only-after-skip (finding 4 rule)", () => {
     expect(s.records[0].idx).toBe(0);
   });
 
+  it("an ATTEMPTED card scrolled past is NOT a lapse: state survives and it stays gradable (device-pass C7)", () => {
+    let s = createSession(T0);
+    s = run(
+      s,
+      { type: "attempt", idx: 0, at: T0 + 2100 },
+      { type: "confidence", idx: 0, confidence: "confident" }, // revealed
+      { type: "activate", idx: 1, at: T0 + 5000 }, // scroll away, ungraded
+      { type: "activate", idx: 0, at: T0 + 9000 }, // come back
+    );
+    expect(s.records).toHaveLength(0); // no lapse — the card was attempted
+    expect(s.slots[0].revealed).toBe(true); // flip state survived
+    expect(s.slots[0].skipped).toBeUndefined();
+    s = run(s, { type: "grade", idx: 0, grade: "good", correct: true, at: T0 + 10000 });
+    expect(s.records).toHaveLength(1); // gradable on return, exactly once
+    expect(s.records[0]).toMatchObject({ skipped: false, confidence: "confident" });
+  });
+
   it("a skip is recorded once even across repeated back-and-forth scrolling", () => {
     let s = createSession(T0);
     s = run(
